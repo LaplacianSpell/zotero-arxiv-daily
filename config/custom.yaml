@@ -58,3 +58,12 @@ reranker:
       effective field theories. I am also interested in lattice approaches to
       non-perturbative QFT when they connect to continuum exact results.
     batch_delay: 0.5
+
+classic_recommender:
+  enabled: true
+  n_picks: 3
+  pool_size: 80
+  pool_mode: both            # pull from both watchlist authors AND broad hep-th
+  min_citations: 150         # hep-th has inflation; 150+ is a reasonable bar
+  max_paper_age_years: null  # no age limit — truly classic papers can be from any era
+  inspire_timeout: 25

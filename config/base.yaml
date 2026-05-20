@@ -56,3 +56,12 @@ executor:
     research_interest: null  # Plain-English description of your research interests
     score_model: null        # Defaults to llm.generation_kwargs.model
     batch_delay: 0.3         # Seconds between API calls
+
+classic_recommender:
+  enabled: false             # Set to true to enable daily classic picks
+  n_picks: 3                 # Number of classic papers to recommend per day
+  pool_size: 60              # Candidates fetched from INSPIRE per query
+  pool_mode: both            # 'watchlist_authors' | 'field' | 'both'
+  min_citations: 100         # Ignore papers below this citation threshold
+  max_paper_age_years: null  # null = no limit; e.g. 3 = only papers ≥ 3 years old
+  inspire_timeout: 20        # Seconds before INSPIRE API call times out
