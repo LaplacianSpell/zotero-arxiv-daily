@@ -121,11 +121,28 @@ class ArxivRetriever(BaseRetriever):
 
     @staticmethod
     def _clean_categories(raw) -> list[str]:
-        """Strip quotes/whitespace that OmegaConf or YAML can inject."""
-        return [str(c).strip("'\" ") for c in raw]
+        """
+        Robustly convert OmegaConf ListConfig / raw YAML values to plain strings.
+
+        Handles several failure modes:
+        - OmegaConf item printed with surrounding quotes: '"hep-lat"'
+        - Entire list stored as a single string: '["hep-th","hep-lat"]'
+        - Mixed quoting: ["hep-th", \'hep-lat\']
+        """
+        import re as _re
+        # If it's a single string that looks like a list, parse it
+        if isinstance(raw, str):
+            # e.g. '["hep-th","hep-lat"]' or 'hep-th,hep-lat'
+            items = _re.split(r'[,\s]+', raw.strip("[]"))
+        else:
+            items = list(raw)
+        # Strip all quote chars and whitespace from each item
+        return [_re.sub(r"""[\'"\s]""", "", str(c)) for c in items if str(c).strip("\'"\s")]
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        categories = self._clean_categories(self.config.source.arxiv.category)
+        raw_cats = self.config.source.arxiv.category
+        categories = self._clean_categories(raw_cats)
+        logger.info(f"arXiv categories (cleaned): {categories}")
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
 
         if self.days_back <= 1:
