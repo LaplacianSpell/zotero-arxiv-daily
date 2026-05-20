@@ -119,8 +119,13 @@ class ArxivRetriever(BaseRetriever):
         # days_back: how many arxiv working days to fetch. Default 1 (today only).
         self.days_back: int = int(self.config.source.arxiv.get("days_back", 1))
 
+    @staticmethod
+    def _clean_categories(raw) -> list[str]:
+        """Strip quotes/whitespace that OmegaConf or YAML can inject."""
+        return [str(c).strip("'\" ") for c in raw]
+
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        categories = self.config.source.arxiv.category
+        categories = self._clean_categories(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
 
         if self.days_back <= 1:
@@ -129,11 +134,12 @@ class ArxivRetriever(BaseRetriever):
             return self._retrieve_via_search(categories, include_cross_list)
 
     # ── RSS path (single day, original behaviour) ─────────────────────────
-    def _retrieve_via_rss(self, categories, include_cross_list: bool) -> list[ArxivResult]:
+    def _retrieve_via_rss(self, categories: list[str], include_cross_list: bool) -> list[ArxivResult]:
         client = arxiv.Client(num_retries=10, delay_seconds=10)
-        query = '+'.join(categories)
+        # RSS endpoint accepts categories joined by '+', no quotes, no spaces
+        query = "+".join(c.lower() for c in categories)
         feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
-        if 'Feed error for query' in feed.feed.title:
+        if "Feed error for query" in (feed.feed.get("title") or ""):
             raise Exception(f"Invalid ARXIV_QUERY: {query}.")
 
         allowed_types = {"new", "cross"} if include_cross_list else {"new"}
@@ -202,7 +208,7 @@ class ArxivRetriever(BaseRetriever):
                     else:
                         raise
         except Exception as exc:
-            logger.warning(f"Search API failed ({exc}), falling back to RSS")
+            logger.warning(f"Search API failed: {exc}. Falling back to RSS (today only).")
             return self._retrieve_via_rss(categories, include_cross_list)
 
         # Filter to only primary-category papers if cross_list not wanted
