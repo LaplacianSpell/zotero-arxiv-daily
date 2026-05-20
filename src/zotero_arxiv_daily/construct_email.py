@@ -52,14 +52,37 @@ def get_empty_html():
   """
   return block_template
 
-def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affiliations:str=None):
-    block_template = """
+def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,
+                   watchlist_hit=None, llm_reason=None):
+    # Build optional rows
+    if watchlist_hit:
+        label = "📌 WATCHLIST — {wtype}: {matched}".format(
+            wtype=watchlist_hit['type'], matched=watchlist_hit['matched'])
+        watchlist_row = (
+            '\n    <tr><td style="padding: 4px 0;">'
+            '<span style="background-color:#c0392b;color:white;padding:3px 8px;'
+            'border-radius:4px;font-size:13px;font-weight:bold;">{label}</span>'
+            '</td></tr>'
+        ).format(label=label)
+    else:
+        watchlist_row = ""
+
+    if llm_reason:
+        llm_reason_row = (
+            '\n    <tr><td style="font-size:13px;color:#777;padding:4px 0;font-style:italic;">'
+            '💡 {reason}</td></tr>'
+        ).format(reason=llm_reason)
+    else:
+        llm_reason_row = ""
+
+    block = """
     <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
     <tr>
         <td style="font-size: 20px; font-weight: bold; color: #333;">
             {title}
         </td>
     </tr>
+    {watchlist_row}
     <tr>
         <td style="font-size: 14px; color: #666; padding: 8px 0;">
             {authors}
@@ -72,12 +95,12 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
             <strong>Relevance:</strong> {rate}
         </td>
     </tr>
+    {llm_reason_row}
     <tr>
         <td style="font-size: 14px; color: #333; padding: 8px 0;">
             <strong>TLDR:</strong> {tldr}
         </td>
     </tr>
-
     <tr>
         <td style="padding: 8px 0;">
             <a href="{pdf_url}" style="display: inline-block; text-decoration: none; font-size: 14px; font-weight: bold; color: #fff; background-color: #d9534f; padding: 8px 16px; border-radius: 4px;">PDF</a>
@@ -85,7 +108,11 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
     </tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate, tldr=tldr, pdf_url=pdf_url, affiliations=affiliations)
+    return block.format(
+        title=title, authors=authors, rate=rate, tldr=tldr,
+        pdf_url=pdf_url, affiliations=affiliations,
+        watchlist_row=watchlist_row, llm_reason_row=llm_reason_row,
+    )
 
 def get_stars(score:float):
     full_star = '<span class="full-star">⭐</span>'
@@ -108,10 +135,13 @@ def render_email(papers:list[Paper]) -> str:
     parts = []
     if len(papers) == 0 :
         return framework.replace('__CONTENT__', get_empty_html())
-    
+
     for p in papers:
-        #rate = get_stars(p.score)
         rate = round(p.score, 1) if p.score is not None else 'Unknown'
+        # Watchlist papers: show raw score replaced by pin label
+        if getattr(p, 'watchlist_hit', None):
+            rate = '📌 pinned'
+
         author_list = [a for a in p.authors]
         num_authors = len(author_list)
         if num_authors <= 5:
@@ -125,7 +155,12 @@ def render_email(papers:list[Paper]) -> str:
                 affiliations += ', ...'
         else:
             affiliations = 'Unknown Affiliation'
-        parts.append(get_block_html(p.title, authors, rate, p.tldr, p.pdf_url, affiliations))
+
+        parts.append(get_block_html(
+            p.title, authors, rate, p.tldr, p.pdf_url, affiliations,
+            watchlist_hit=getattr(p, 'watchlist_hit', None),
+            llm_reason=getattr(p, 'llm_reason', None),
+        ))
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
     return framework.replace('__CONTENT__', content)

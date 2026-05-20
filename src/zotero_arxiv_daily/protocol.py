@@ -20,6 +20,8 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    watchlist_hit: Optional[dict] = None   # {'type': 'author'|'affiliation', 'matched': str}
+    llm_reason: Optional[str] = None       # one-sentence LLM explanation of relevance score
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')

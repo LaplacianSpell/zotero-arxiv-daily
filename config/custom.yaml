@@ -1,7 +1,7 @@
 zotero:
   user_id: ${oc.env:ZOTERO_ID}
   api_key: ${oc.env:ZOTERO_KEY}
-  include_path: null # Or set a list of glob patterns, e.g. ["2026/survey/**","2026/reading-group/**"]
+  include_path: null
 
 email:
   sender: ${oc.env:SENDER}
@@ -12,15 +12,49 @@ email:
 
 llm:
   api:
-    key: ${oc.env:OPENAI_API_KEY}
-    base_url: ${oc.env:OPENAI_API_BASE}
+    key: ${oc.env:DEEPSEEK_API_KEY}
+    base_url: https://api.deepseek.com
   generation_kwargs:
-    model: gpt-4o-mini
+    model: deepseek-v4-pro
+    max_tokens: 4096
 
 source:
   arxiv:
-    category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
+    category: ["hep-th"]
+    include_cross_list: true   # pick up hep-ph / math-ph cross-lists
 
 executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
+  reranker: llm
+  max_paper_num: 30  # hep-th daily volume is manageable
+
+reranker:
+  watchlist:
+    authors:
+      # Add or remove names freely — substring match, so "Witten" catches "Edward Witten"
+      - Witten
+      - Seiberg
+      - Kapustin
+      - Gaiotto
+      - Cordova
+      - Tachikawa
+      - Komargodski
+      - Shenker
+      - Maldacena
+    affiliations:
+      # Searched in the raw LaTeX header of each paper
+      - IAS Princeton
+      - Perimeter Institute
+      - CERN
+  llm_reranker:
+    research_interest: >
+      I work on non-perturbative aspects of quantum field theory.
+      My main interests include: exact results in 2D gauge theories (Schwinger model,
+      bosonization, axial anomaly, confinement via photon mass generation), higher-form
+      symmetries and symmetry topological field theories (SymTFT), 't Hooft anomaly
+      matching, topological field theories in various dimensions, integrability in QFT,
+      and string/M-theory compactifications that produce interesting low-dimensional
+      effective field theories. I am also interested in lattice approaches to
+      non-perturbative QFT when they connect to continuum exact results.
+    batch_delay: 0.5
