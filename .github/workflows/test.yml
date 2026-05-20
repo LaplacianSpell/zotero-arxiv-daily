@@ -8,13 +8,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      #  with:
-      #    repository: ${{ vars.REPOSITORY }}
-      #    ref: ${{ vars.REF }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7.1.4
-
 
       - name: Run script
         env:
@@ -23,12 +19,15 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
           export DEBUG=true
-          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+            echo "Using CUSTOM_CONFIG variable:"
+          else
+            echo "Using committed config/custom.yaml:"
+          fi
           cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py

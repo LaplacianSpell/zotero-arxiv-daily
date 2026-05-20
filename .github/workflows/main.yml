@@ -24,11 +24,15 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
-          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
+          # Only overwrite custom.yaml if CUSTOM_CONFIG is explicitly set
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+            echo "Using CUSTOM_CONFIG variable:"
+          else
+            echo "Using committed config/custom.yaml:"
+          fi
           cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
