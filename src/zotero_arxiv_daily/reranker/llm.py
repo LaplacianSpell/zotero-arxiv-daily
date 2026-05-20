@@ -88,6 +88,8 @@ class LlmReranker(BaseReranker):
     # ── Watchlist helpers ────────────────────────────────────────────────────
     @staticmethod
     def _norm(s: str) -> str:
+        if not s:
+            return ""
         return re.sub(r"\s+", " ", s.strip().lower())
 
     def _check_author_watchlist(self, paper: Paper) -> Optional[dict]:
