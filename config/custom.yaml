@@ -22,6 +22,7 @@ source:
   arxiv:
     category: ["hep-th"]
     include_cross_list: true   # pick up hep-ph / math-ph cross-lists
+    days_back: 3               # fetch last 3 arxiv working days per run
 
 executor:
   debug: ${oc.env:DEBUG,null}

@@ -9,7 +9,7 @@ from datetime import datetime
 from .reranker import get_reranker_cls
 from .construct_email import render_email
 from .utils import send_email
-from .classic_recommender import ClassicRecommender
+from .classic_recommender import ClassicRecommender, save_sent_ids
 from openai import OpenAI
 from tqdm import tqdm
 
@@ -17,21 +17,18 @@ from tqdm import tqdm
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
     if patterns is None:
         return None
-
     if not isinstance(patterns, (list, ListConfig)):
         raise TypeError(
             f"config.zotero.{config_key} must be a list of glob patterns or null, "
             'for example ["2026/survey/**"]. Single strings are not supported.'
         )
-
     if any(not isinstance(pattern, str) for pattern in patterns):
         raise TypeError(f"config.zotero.{config_key} must contain only glob pattern strings.")
-
     return list(patterns)
 
 
 class Executor:
-    def __init__(self, config:DictConfig):
+    def __init__(self, config: DictConfig):
         self.config = config
         self.include_path_patterns = normalize_path_patterns(config.zotero.include_path, "include_path")
         self.ignore_path_patterns = normalize_path_patterns(config.zotero.ignore_path, "ignore_path")
@@ -41,18 +38,21 @@ class Executor:
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
         self.openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
         self.classic_recommender = ClassicRecommender(config, self.openai_client)
+
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
         zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
         collections = zot.everything(zot.collections())
-        collections = {c['key']:c for c in collections}
+        collections = {c['key']: c for c in collections}
         corpus = zot.everything(zot.items(itemType='conferencePaper || journalArticle || preprint'))
         corpus = [c for c in corpus if c['data']['abstractNote'] != '']
-        def get_collection_path(col_key:str) -> str:
+
+        def get_collection_path(col_key: str) -> str:
             if p := collections[col_key]['data']['parentCollection']:
                 return get_collection_path(p) + '/' + collections[col_key]['data']['name']
             else:
                 return collections[col_key]['data']['name']
+
         for c in corpus:
             paths = [get_collection_path(col) for col in c['data']['collections']]
             c['paths'] = paths
@@ -63,8 +63,8 @@ class Executor:
             added_date=datetime.strptime(c['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),
             paths=c['paths']
         ) for c in corpus]
-    
-    def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
+
+    def filter_corpus(self, corpus: list[CorpusPaper]) -> list[CorpusPaper]:
         if self.include_path_patterns:
             logger.info(f"Selecting zotero papers matching include_path: {self.include_path_patterns}")
             corpus = [
@@ -91,13 +91,13 @@ class Executor:
             logger.info(f"Selected {len(corpus)} zotero papers:\n{samples}\n...")
         return corpus
 
-    
     def run(self):
         corpus = self.fetch_zotero_corpus()
         corpus = self.filter_corpus(corpus)
         if len(corpus) == 0:
             logger.error(f"No zotero papers found. Please check your zotero settings:\n{self.config.zotero}")
             return
+
         all_papers = []
         for source, retriever in self.retrievers.items():
             logger.info(f"Retrieving {source} papers...")
@@ -108,6 +108,7 @@ class Executor:
             logger.info(f"Retrieved {len(papers)} {source} papers")
             all_papers.extend(papers)
         logger.info(f"Total {len(all_papers)} papers retrieved from all sources")
+
         reranked_papers = []
         if len(all_papers) > 0:
             logger.info("Reranking papers...")
@@ -120,8 +121,15 @@ class Executor:
         elif not self.config.executor.send_empty:
             logger.info("No new papers found. No email will be sent.")
             return
+
+        # Classic picks (returns updated sent-ID set to persist after send)
+        classic_papers, new_sent_ids = self.classic_recommender.recommend(corpus)
+
         logger.info("Sending email...")
-        classic_papers = self.classic_recommender.recommend(corpus)
         email_content = render_email(reranked_papers, classic_papers=classic_papers)
         send_email(self.config, email_content)
         logger.info("Email sent successfully")
+
+        # Persist the updated sent-classics state only after successful send
+        if new_sent_ids and self.classic_recommender.enabled:
+            save_sent_ids(self.classic_recommender.state_path, new_sent_ids)

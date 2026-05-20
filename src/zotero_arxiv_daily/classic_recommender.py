@@ -2,39 +2,28 @@
 classic_recommender.py — Daily "classic paper" picks for zotero-arxiv-daily.
 
 Workflow:
-  1. Query INSPIRE-HEP for a pool of highly-cited candidate papers.
-     Two pool modes (config: classic_recommender.pool_mode):
-       'watchlist_authors'  — papers by the authors in reranker.watchlist.authors
-       'field'              — broadly highly-cited hep-th papers
-       'both'               — union of the above (default)
+  1. Load already-sent classic IDs from state/sent_classics.json (persisted in repo).
+  2. Query INSPIRE-HEP for a pool of highly-cited candidate papers.
+     pool_mode: 'watchlist_authors' | 'field' | 'both'
+  3. Filter out: (a) papers in Zotero corpus, (b) already-sent classics.
+  4. Ask the LLM to pick n_picks diverse, relevant papers from the pool.
+  5. Return Paper objects; caller must persist the updated sent list after send.
 
-  2. Filter out papers already present in the user's Zotero corpus
-     (matched by arXiv ID or title normalisation).
-
-  3. Ask the LLM to pick `n_picks` papers from the pool that are
-       (a) most relevant to research_interest,
-       (b) foundational / widely influential,
-       (c) diverse across sub-topics.
-     The LLM returns structured JSON so we can cross-reference arXiv IDs.
-
-  4. Return a list of Paper objects (score=0, marked as classics) ready
-     to be rendered in a separate email section.
-
-Config (added to base.yaml / custom.yaml under key `classic_recommender`):
-
-  classic_recommender:
-    enabled: true
-    n_picks: 3
-    pool_size: 60          # candidates fetched from INSPIRE per query
-    pool_mode: both        # 'watchlist_authors' | 'field' | 'both'
-    min_citations: 100     # ignore papers below this citation count
-    max_paper_age_years: null  # null = no limit; 5 = only papers ≥ 5 years old
-    inspire_timeout: 20
+Config (under classic_recommender in custom.yaml):
+  enabled: true
+  n_picks: 3
+  pool_size: 80
+  pool_mode: both
+  min_citations: 150
+  max_paper_age_years: null
+  sent_classics_path: state/sent_classics.json   # relative to repo root
+  inspire_timeout: 25
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -47,12 +36,8 @@ from openai import OpenAI
 
 from .protocol import CorpusPaper, Paper
 
-# ─────────────────────────────────────────────────────────────────────────────
 INSPIRE_BASE = "https://inspirehep.net/api/literature"
 INSPIRE_FIELDS = "arxiv_eprints,titles,authors,citation_count,abstracts,earliest_date"
-ARXIV_BASE = "https://export.arxiv.org/abs/"
-
-# ─────────────────────────────────────────────────────────────────────────────
 
 _LLM_SYSTEM = """\
 You are an expert in theoretical high-energy physics.
@@ -65,27 +50,62 @@ most valuable to read, prioritising:
 Respond ONLY with a JSON array of exactly {n} objects, no markdown, no preamble:
 [
   {{
-    "arxiv_id": "<id as given in the list, e.g. hep-th/9802150 or 2106.12345>",
-    "reason": "<2–3 sentences: why this paper is important AND why it connects to the researcher's interests today>"
+    "arxiv_id": "<id exactly as given in the candidate list>",
+    "reason": "<2-3 sentences: why foundational AND why relevant to the researcher>"
   }},
   ...
 ]
+If there are fewer than {n} suitable candidates, return as many as possible.
 """
 
 
+# ── Sent-state persistence ────────────────────────────────────────────────────
+
+def _state_path(cfg_path: str) -> str:
+    """Resolve path relative to repo root (where the process runs from)."""
+    return cfg_path  # workflow runs from repo root via uv run
+
+
+def load_sent_ids(path: str) -> set[str]:
+    try:
+        with open(_state_path(path)) as f:
+            data = json.load(f)
+        ids = set(data.get("sent_ids", []))
+        logger.debug(f"Loaded {len(ids)} previously-sent classic IDs from {path}")
+        return ids
+    except FileNotFoundError:
+        logger.info(f"No sent-classics state file at {path}, starting fresh")
+        return set()
+    except Exception as exc:
+        logger.warning(f"Failed to load sent classics state: {exc}")
+        return set()
+
+
+def save_sent_ids(path: str, ids: set[str]) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    data = {
+        "sent_ids": sorted(ids),
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "count": len(ids),
+    }
+    try:
+        with open(_state_path(path), "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Saved {len(ids)} sent classic IDs to {path}")
+    except Exception as exc:
+        logger.warning(f"Failed to save sent classics state: {exc}")
+
+
+# ── INSPIRE-HEP client ────────────────────────────────────────────────────────
+
 class InspireHEPClient:
-    def __init__(self, timeout: int = 20):
+    def __init__(self, timeout: int = 25):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["Accept"] = "application/json"
 
     def _query(self, q: str, size: int, min_citations: int) -> list[dict]:
-        params = {
-            "sort": "mostcited",
-            "size": size,
-            "fields": INSPIRE_FIELDS,
-            "q": q,
-        }
+        params = {"sort": "mostcited", "size": size, "fields": INSPIRE_FIELDS, "q": q}
         try:
             resp = self.session.get(INSPIRE_BASE, params=params, timeout=self.timeout)
             resp.raise_for_status()
@@ -97,236 +117,205 @@ class InspireHEPClient:
         results = []
         for hit in hits:
             meta = hit.get("metadata", {})
-            citations = meta.get("citation_count", 0) or 0
-            if citations < min_citations:
+            if (meta.get("citation_count") or 0) < min_citations:
                 continue
             arxiv_ids = [e["value"] for e in meta.get("arxiv_eprints", []) if "value" in e]
             if not arxiv_ids:
                 continue
             title = (meta.get("titles") or [{}])[0].get("title", "")
             authors = [a.get("full_name", "") for a in (meta.get("authors") or [])[:6]]
-            abstract = (meta.get("abstracts") or [{}])[0].get("value", "")
-            date_str = meta.get("earliest_date", "")
+            abstract = (meta.get("abstracts") or [{}])[0].get("value", "")[:500]
             results.append({
                 "arxiv_id": arxiv_ids[0],
                 "title": title,
                 "authors": authors,
-                "abstract": abstract[:400],
-                "citations": citations,
-                "date": date_str,
+                "abstract": abstract,
+                "citations": meta.get("citation_count", 0),
+                "date": meta.get("earliest_date", ""),
             })
         return results
 
-    def get_watchlist_author_papers(
-        self, authors: list[str], size: int, min_citations: int
-    ) -> list[dict]:
-        """Fetch highly-cited papers for each watched author and merge."""
+    def get_author_papers(self, authors: list[str], size: int, min_citations: int) -> list[dict]:
         all_papers: dict[str, dict] = {}
-        per_author = max(size // max(len(authors), 1), 10)
+        per_author = max(size // max(len(authors), 1), 15)
         for author in authors:
-            # INSPIRE author search — last name is sufficient
             surname = author.strip().split()[-1]
-            papers = self._query(f"a {surname} and tc 1--hep-th", per_author, min_citations)
-            for p in papers:
+            for p in self._query(f"a {surname} and tc hep-th", per_author, min_citations):
                 all_papers.setdefault(p["arxiv_id"], p)
+            time.sleep(0.3)
         return list(all_papers.values())
 
     def get_field_papers(self, size: int, min_citations: int) -> list[dict]:
-        """Fetch broadly highly-cited hep-th papers."""
         return self._query("hep-th", size, min_citations)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Filtering helpers ─────────────────────────────────────────────────────────
 
 def _norm_title(t: str) -> str:
     return re.sub(r"[^a-z0-9]", "", t.lower())
 
 
-def _filter_known(candidates: list[dict], corpus: list[CorpusPaper]) -> list[dict]:
-    """Remove papers already in the user's Zotero library."""
+def _filter_known(pool: list[dict], corpus: list[CorpusPaper], sent_ids: set[str]) -> list[dict]:
     known_titles = {_norm_title(c.title) for c in corpus}
-    filtered = [p for p in candidates if _norm_title(p["title"]) not in known_titles]
-    logger.debug(f"Classic filter: {len(candidates)} → {len(filtered)} after removing Zotero papers")
+    before = len(pool)
+    filtered = [
+        p for p in pool
+        if p["arxiv_id"] not in sent_ids
+        and _norm_title(p["title"]) not in known_titles
+    ]
+    logger.debug(
+        f"Classic filter: {before} → {len(filtered)} "
+        f"(removed {sum(1 for p in pool if p['arxiv_id'] in sent_ids)} already-sent, "
+        f"{sum(1 for p in pool if _norm_title(p['title']) in known_titles)} in Zotero)"
+    )
     return filtered
 
 
-def _filter_age(candidates: list[dict], max_age_years: Optional[int]) -> list[dict]:
+def _filter_age(pool: list[dict], max_age_years: Optional[int]) -> list[dict]:
     if not max_age_years:
-        return candidates
-    cutoff_year = datetime.now(timezone.utc).year - max_age_years
-    def _old_enough(p: dict) -> bool:
-        try:
-            return int(p["date"][:4]) <= cutoff_year
-        except Exception:
-            return True  # keep if date unknown
-    return [p for p in candidates if _old_enough(p)]
+        return pool
+    cutoff = datetime.now(timezone.utc).year - max_age_years
+    return [p for p in pool if not p["date"] or int(p["date"][:4]) <= cutoff]
 
+
+# ── LLM picker ────────────────────────────────────────────────────────────────
 
 def _llm_pick(
-    client: OpenAI,
-    candidates: list[dict],
-    research_interest: str,
-    model: str,
-    n_picks: int,
+    client: OpenAI, model: str,
+    pool: list[dict], research_interest: str, n_picks: int,
 ) -> list[dict]:
-    """
-    Ask the LLM to pick n_picks from the candidate list.
-    Returns a list of {'arxiv_id': ..., 'reason': ...}.
-    """
-    # Build a numbered candidate list for the prompt
     lines = []
-    id_map = {}  # index → arxiv_id for verification
-    for i, p in enumerate(candidates):
-        authors_str = ", ".join(p["authors"][:3])
-        if len(p["authors"]) > 3:
-            authors_str += " et al."
+    for i, p in enumerate(pool):
+        auth = ", ".join(p["authors"][:3]) + (" et al." if len(p["authors"]) > 3 else "")
         lines.append(
-            f"[{i+1}] {p['arxiv_id']} | {p['citations']} citations\n"
+            f"[{i+1}] {p['arxiv_id']} | {p['citations']} citations | {p['date'][:4] if p['date'] else '?'}\n"
             f"    Title: {p['title']}\n"
-            f"    Authors: {authors_str}\n"
+            f"    Authors: {auth}\n"
             f"    Abstract: {p['abstract']}"
         )
-        id_map[p["arxiv_id"]] = p
-
-    candidate_text = "\n\n".join(lines)
-    user_msg = (
-        f"My research interests:\n{research_interest}\n\n"
-        f"Candidate classic papers (pick exactly {n_picks}):\n\n"
-        f"{candidate_text}"
-    )
-    system = _LLM_SYSTEM.format(n=n_picks)
+    id_map = {p["arxiv_id"]: p for p in pool}
 
     try:
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_msg},
+                {"role": "system", "content": _LLM_SYSTEM.format(n=n_picks)},
+                {"role": "user", "content": (
+                    f"My research interests:\n{research_interest}\n\n"
+                    f"Candidate classic papers:\n\n" + "\n\n".join(lines)
+                )},
             ],
             max_tokens=800,
-            temperature=0.4,  # slight randomness so daily picks vary
+            temperature=0.5,  # varied so daily picks differ
         )
         raw = resp.choices[0].message.content.strip()
         raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE).strip("`").strip()
         picks = json.loads(raw)
-        # Validate and enrich
         result = []
         for pick in picks[:n_picks]:
-            arxiv_id = pick.get("arxiv_id", "").strip()
-            if arxiv_id in id_map:
-                entry = dict(id_map[arxiv_id])
-                entry["reason"] = pick.get("reason", "")
-                result.append(entry)
+            aid = pick.get("arxiv_id", "").strip()
+            if aid in id_map:
+                result.append(dict(id_map[aid], reason=pick.get("reason", "")))
             else:
-                logger.warning(f"LLM returned unknown arXiv ID {arxiv_id!r}, skipping")
+                logger.warning(f"LLM returned unknown arXiv ID {aid!r}, skipping")
         return result
     except Exception as exc:
         logger.warning(f"LLM classic pick failed: {exc}")
-        # fallback: return highest-cited ones
-        return [dict(p, reason="") for p in sorted(candidates, key=lambda x: -x["citations"])[:n_picks]]
+        # fallback: top-cited
+        return [dict(p, reason="") for p in
+                sorted(pool, key=lambda x: -x["citations"])[:n_picks]]
 
+
+# ── Paper conversion ──────────────────────────────────────────────────────────
 
 def _to_paper(p: dict) -> Paper:
-    """Convert a classic-pick dict into a Paper object for email rendering."""
-    arxiv_id = p["arxiv_id"]
-    # Normalise ID to URL form
-    if re.match(r"^\d{4}\.\d+", arxiv_id):
-        url = f"https://arxiv.org/abs/{arxiv_id}"
-        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
-    else:
-        # Legacy IDs like hep-th/9802150
-        url = f"https://arxiv.org/abs/{arxiv_id}"
-        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
-
+    aid = p["arxiv_id"]
+    url = f"https://arxiv.org/abs/{aid}"
+    pdf_url = f"https://arxiv.org/pdf/{aid}"
     paper = Paper(
-        source="classic",
-        title=p["title"],
-        authors=p["authors"],
-        abstract=p.get("abstract", ""),
-        url=url,
-        pdf_url=pdf_url,
-        score=0.0,
-        tldr=p.get("reason", ""),
+        source="classic", title=p["title"], authors=p["authors"],
+        abstract=p.get("abstract", ""), url=url, pdf_url=pdf_url,
+        score=0.0, tldr=p.get("reason", ""),
     )
-    paper.watchlist_hit = None  # type: ignore[attr-defined]
+    paper.watchlist_hit = None          # type: ignore[attr-defined]
     paper.llm_reason = p.get("reason")  # type: ignore[attr-defined]
-    paper.citations = p.get("citations", 0)  # type: ignore[attr-defined]
-    paper.is_classic = True  # type: ignore[attr-defined]
+    paper.citations = p.get("citations", 0)   # type: ignore[attr-defined]
+    paper.is_classic = True             # type: ignore[attr-defined]
     return paper
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Main class ────────────────────────────────────────────────────────────────
 
 class ClassicRecommender:
     def __init__(self, config: DictConfig, openai_client: OpenAI):
-        self.config = config
         self.client = openai_client
-
         raw = config.get("classic_recommender", {})
         cfg: dict = OmegaConf.to_container(raw, resolve=True) if raw else {}
 
-        self.enabled: bool = bool(cfg.get("enabled", False))
-        self.n_picks: int = int(cfg.get("n_picks", 3))
-        self.pool_size: int = int(cfg.get("pool_size", 60))
-        self.pool_mode: str = cfg.get("pool_mode", "both")
-        self.min_citations: int = int(cfg.get("min_citations", 100))
-        self.max_age_years: Optional[int] = cfg.get("max_paper_age_years") or None
-        self.inspire_timeout: int = int(cfg.get("inspire_timeout", 20))
+        self.enabled       = bool(cfg.get("enabled", False))
+        self.n_picks       = int(cfg.get("n_picks", 3))
+        self.pool_size     = int(cfg.get("pool_size", 80))
+        self.pool_mode     = cfg.get("pool_mode", "both")
+        self.min_citations = int(cfg.get("min_citations", 150))
+        self.max_age_years = cfg.get("max_paper_age_years") or None
+        self.state_path    = cfg.get("sent_classics_path", "state/sent_classics.json")
+        self.inspire_timeout = int(cfg.get("inspire_timeout", 25))
 
-        # Get research_interest and model from reranker config
-        llm_rcfg = config.reranker.get("llm_reranker", {})
-        llm_r: dict = OmegaConf.to_container(llm_rcfg, resolve=True) if llm_rcfg else {}
-        self.research_interest: str = llm_r.get("research_interest", "theoretical high-energy physics")
+        llm_r: dict = OmegaConf.to_container(config.reranker.get("llm_reranker", {}), resolve=True) \
+            if config.reranker.get("llm_reranker") else {}
+        self.research_interest = llm_r.get("research_interest", "theoretical high-energy physics")
+        gen = OmegaConf.to_container(config.llm.generation_kwargs, resolve=True)
+        self.model = gen.get("model", "deepseek-v4-pro")
 
-        gen_kwargs = OmegaConf.to_container(config.llm.generation_kwargs, resolve=True)
-        self.model: str = gen_kwargs.get("model", "deepseek-v4-pro")
-
-        wl_raw = config.reranker.get("watchlist", {})
-        wl: dict = OmegaConf.to_container(wl_raw, resolve=True) if wl_raw else {}
+        wl: dict = OmegaConf.to_container(config.reranker.get("watchlist", {}), resolve=True) \
+            if config.reranker.get("watchlist") else {}
         self.watched_authors: list[str] = wl.get("authors") or []
 
         self.inspire = InspireHEPClient(timeout=self.inspire_timeout)
 
-    def recommend(self, corpus: list[CorpusPaper]) -> list[Paper]:
+    def recommend(self, corpus: list[CorpusPaper]) -> tuple[list[Paper], set[str]]:
+        """
+        Returns (classic_papers, new_sent_ids_to_persist).
+        Caller should call save_sent_ids(path, new_ids) after successful email send.
+        """
         if not self.enabled:
-            return []
+            return [], set()
 
-        logger.info("Classic recommender: building candidate pool…")
-        candidates: dict[str, dict] = {}
+        sent_ids = load_sent_ids(self.state_path)
+
+        # ── Reset if we've exhausted a large fraction of the pool ────────────
+        # Hep-th top-500 is a finite set; reset after sending 300 to keep variety
+        if len(sent_ids) > 300:
+            logger.info("Classic recommender: sent_ids > 300, resetting history for variety")
+            sent_ids = set()
+
+        logger.info("Classic recommender: querying INSPIRE-HEP…")
+        pool: dict[str, dict] = {}
 
         if self.pool_mode in ("watchlist_authors", "both") and self.watched_authors:
-            papers = self.inspire.get_watchlist_author_papers(
-                self.watched_authors, self.pool_size, self.min_citations
-            )
-            for p in papers:
-                candidates.setdefault(p["arxiv_id"], p)
-            logger.info(f"  watchlist_authors pool: {len(candidates)} papers")
+            for p in self.inspire.get_author_papers(self.watched_authors, self.pool_size, self.min_citations):
+                pool.setdefault(p["arxiv_id"], p)
+            logger.info(f"  watchlist_authors: {len(pool)} papers")
 
         if self.pool_mode in ("field", "both"):
-            papers = self.inspire.get_field_papers(self.pool_size, self.min_citations)
-            before = len(candidates)
-            for p in papers:
-                candidates.setdefault(p["arxiv_id"], p)
-            logger.info(f"  field pool: added {len(candidates)-before} papers")
+            before = len(pool)
+            for p in self.inspire.get_field_papers(self.pool_size, self.min_citations):
+                pool.setdefault(p["arxiv_id"], p)
+            logger.info(f"  field: +{len(pool)-before} papers (total {len(pool)})")
 
-        pool = list(candidates.values())
+        candidates = list(pool.values())
+        candidates = _filter_known(candidates, corpus, sent_ids)
+        candidates = _filter_age(candidates, self.max_age_years)
 
-        if not pool:
-            logger.warning("Classic recommender: empty candidate pool, skipping")
-            return []
+        if not candidates:
+            logger.warning("Classic recommender: no candidates after filtering")
+            return [], sent_ids
 
-        pool = _filter_known(pool, corpus)
-        pool = _filter_age(pool, self.max_age_years)
+        actual_picks = min(self.n_picks, len(candidates))
+        logger.info(f"Classic recommender: LLM picking {actual_picks} from {len(candidates)}…")
+        picks = _llm_pick(self.client, self.model, candidates, self.research_interest, actual_picks)
 
-        if len(pool) < self.n_picks:
-            logger.warning(
-                f"Classic recommender: only {len(pool)} candidates after filtering, need {self.n_picks}"
-            )
-            if not pool:
-                return []
-
-        logger.info(f"Classic recommender: LLM picking {self.n_picks} from {len(pool)} candidates…")
-        picks = _llm_pick(self.client, pool, self.research_interest, self.model, self.n_picks)
-
-        logger.info(f"Classic recommender: selected {len(picks)} papers")
-        return [_to_paper(p) for p in picks]
+        # Update sent set (only mark as sent after successful pick)
+        new_sent = sent_ids | {p["arxiv_id"] for p in picks}
+        logger.info(f"Classic recommender: picked {len(picks)} papers")
+        return [_to_paper(p) for p in picks], new_sent
