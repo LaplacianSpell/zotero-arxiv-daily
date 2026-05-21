@@ -123,7 +123,7 @@ class ArxivRetriever(BaseRetriever):
     def _clean_categories(raw) -> list[str]:
         """Convert OmegaConf ListConfig / raw YAML to a list of plain category strings."""
         import re as _re
-        _JUNK = re.compile(r"[\s\'\"\[\]]")
+        _JUNK = _re.compile(r"[\s\'\"\[\]]")
         if isinstance(raw, str):
             items = _re.split(r"[,\s]+", raw.strip("[]"))
         else:
