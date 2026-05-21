@@ -9,6 +9,7 @@ from datetime import datetime
 from .reranker import get_reranker_cls
 from .construct_email import render_email
 from .utils import send_email
+from concurrent.futures import ThreadPoolExecutor
 from .classic_recommender import ClassicRecommender, save_sent_ids
 from .reranker.llm import WATCHLIST_SCORE, LlmReranker
 from openai import OpenAI
@@ -121,9 +122,12 @@ class Executor:
             # Stage 2: affiliation boost on top 2×N candidates only
             # This avoids running affiliation extraction on hundreds of papers.
             candidates = stage1[:max_n * 2]
-            logger.info(f"Stage 2: generating affiliations for top {len(candidates)} candidates...")
-            for p in tqdm(candidates):
-                p.generate_affiliations(self.openai_client, self.config.llm)
+            logger.info(f"Stage 2: generating affiliations for top {len(candidates)} candidates (parallel)...")
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                list(tqdm(
+                    pool.map(lambda p: p.generate_affiliations(self.openai_client, self.config.llm), candidates),
+                    total=len(candidates)
+                ))
 
             # Re-score with affiliation boost and re-sort
             # Only LlmReranker supports affiliation boost; skip for other rerankers.
@@ -138,9 +142,12 @@ class Executor:
 
             reranked_papers = sorted(candidates, key=lambda p: p.score, reverse=True)[:max_n]
 
-            logger.info("Generating TLDR for top papers...")
-            for p in tqdm(reranked_papers):
-                p.generate_tldr(self.openai_client, self.config.llm)
+            logger.info("Generating TLDR for top papers (parallel)...")
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                list(tqdm(
+                    pool.map(lambda p: p.generate_tldr(self.openai_client, self.config.llm), reranked_papers),
+                    total=len(reranked_papers)
+                ))
         elif not self.config.executor.send_empty:
             logger.info("No new papers found. No email will be sent.")
             return
@@ -149,9 +156,12 @@ class Executor:
         classic_papers, new_sent_ids = self.classic_recommender.recommend(corpus)
 
         if classic_papers:
-            logger.info("Generating TLDR for classic papers...")
-            for p in tqdm(classic_papers):
-                p.generate_tldr(self.openai_client, self.config.llm)
+            logger.info("Generating TLDR for classic papers (parallel)...")
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                list(tqdm(
+                    pool.map(lambda p: p.generate_tldr(self.openai_client, self.config.llm), classic_papers),
+                    total=len(classic_papers)
+                ))
 
         logger.info("Sending email...")
         email_content = render_email(reranked_papers, classic_papers=classic_papers)
