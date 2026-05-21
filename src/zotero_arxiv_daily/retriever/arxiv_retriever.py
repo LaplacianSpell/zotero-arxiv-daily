@@ -161,7 +161,7 @@ class ArxivRetriever(BaseRetriever):
             if i.get("arxiv_announce_type", "new") in allowed_types
         ]
         if self.config.executor.debug:
-            all_paper_ids = all_paper_ids[:10]
+            all_paper_ids = all_paper_ids[:30]
 
         logger.info(f"RSS: {len(all_paper_ids)} paper IDs for {query}")
         return self._fetch_by_ids(client, all_paper_ids)
