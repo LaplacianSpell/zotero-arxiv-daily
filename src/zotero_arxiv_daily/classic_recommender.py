@@ -187,11 +187,13 @@ def _llm_pick(
     lines = []
     for i, p in enumerate(pool):
         auth = ", ".join(p["authors"][:3]) + (" et al." if len(p["authors"]) > 3 else "")
+        # Truncate abstract to keep prompt manageable
+        abstract_snippet = (p["abstract"] or "")[:200].replace("\n", " ")
         lines.append(
             f"[{i+1}] {p['arxiv_id']} | {p['citations']} citations | {p['date'][:4] if p['date'] else '?'}\n"
             f"    Title: {p['title']}\n"
             f"    Authors: {auth}\n"
-            f"    Abstract: {p['abstract']}"
+            f"    Abstract: {abstract_snippet}"
         )
     id_map = {p["arxiv_id"]: p for p in pool}
 
@@ -206,9 +208,10 @@ def _llm_pick(
                 )},
             ],
             max_tokens=4096,
-            temperature=0.5,  # varied so daily picks differ
+            temperature=0.0,
         )
         raw = resp.choices[0].message.content.strip()
+        logger.debug(f"Classic picker raw response ({len(raw)} chars): {raw[:400]}")
 
         # Robust extraction: try after </think>, then inside <think>, then whole raw
         def _try_parse_array(text: str):
@@ -282,7 +285,8 @@ class ClassicRecommender:
             if config.reranker.get("llm_reranker") else {}
         self.research_interest = llm_r.get("research_interest", "theoretical high-energy physics")
         gen = OmegaConf.to_container(config.llm.generation_kwargs, resolve=True)
-        self.model = gen.get("model", "deepseek-v4-pro")
+        # Use flash model for selection task — reasoning model wastes tokens on <think>
+        self.model = cfg.get("pick_model") or "deepseek-v4-flash"
 
         wl: dict = OmegaConf.to_container(config.reranker.get("watchlist", {}), resolve=True) \
             if config.reranker.get("watchlist") else {}
