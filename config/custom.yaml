@@ -33,34 +33,32 @@ executor:
 reranker:
   watchlist:
     authors:
-      # generalized symmetry / defect / lattice / mathematical QFT
+      # generalized symmetry / SymTFT / lattice / mathematical QFT
       - Shu-Heng Shao
       - Davide Gaiotto
       - Ho Tat Lam
       - Nathan Seiberg
-      - David Tong
-      - Joao Penedones
       - Clay Cordova
       - Thomas T. Dumitrescu
       - Zohar Komargodski
+      - Yuji Tachikawa
+      - Yifan Wang
+      # bootstrap / CFT
       - David Simmons-Duffin
       - Alexander V. Zhiboedov
       - Victor Gorbenko
-      - Yifan Wang
       - Silviu Pufu
       - Simone Giombi
-      - Henry W. Lin
-      - Xi Yin
       - Pedro Vieira
       - Simon Caron-Huot
       - Igor Klebanov
-      - Yuji Tachikawa
+      - David Tong
+      - Joao Penedones
       # holography / black holes / quantum gravity / QI
       - Daniel Harlow
       - Netta Engelhardt
       - Hong Liu
       - Maldacena
-      - Verlinde
       - Witten
       - Douglas Stanford
       - Thomas E. Hartman
@@ -69,103 +67,75 @@ reranker:
       - Daniel Jafferis
       - Xi Dong
       - Raphael Bousso
-      - Donald Marolf
-      - Gary T. Horowitz
       - Thomas Faulkner
       - Veronika Hubeny
       - Mukund Rangamani
       - Mark Van Raamsdonk
-      - Robert Myers
-      - Brian Swingle
-      - Alexander DeWitt Maloney
       - Scott Collier
       - Gustavo Turiaci
       - Ahmed Almheiri
-      - Vijay Balasubramanian
-      - Per Kraus
       - Yiming Chen
       - Zhenbin Yang
       - Tadashi Takayanagi
+      - Henry W. Lin
+      - Xi Yin
       # string / mathematical physics
       - Strominger
       - Hirosi Ooguri
       - Lorenz Eberhardt
       - Matthias R. Gaberdiel
-      # QFT / solitons / instantons / anomalies
-      - Sidney Coleman
-      - Curtis G. Callan
-      - Roman Jackiw
-      - Gerard t Hooft
-      - Alexander M. Polyakov
-      - Stanley Mandelstam
-      - Kenneth G. Wilson
-      - Julian Schwinger
-      - Yoichiro Nambu
-      - Jeffrey Goldstone
-      - Valery Rubakov
-      - Erick Weinberg
-      - Steven Weinberg
-      # anomalies / chiral fermions / lattice
-      - Stephen Adler
-      - John Bell
-      - Julius Wess
-      - Bruno Zumino
-      - Luis Alvarez-Gaume
-      - Paul Ginsparg
-      - Martin Luscher
-      - Herbert Neuberger
-      - Holger Bech Nielsen
-      - Michael Creutz
-      # 2d CFT / boundary CFT / integrable QFT
-      - Alexander Zamolodchikov
-      - Alexei Zamolodchikov
-      - V. A. Fateev
-      - John Cardy
-      - Daniel Friedan
-      - Ian Affleck
-      - Andreas Ludwig
-      - Nobuyuki Ishibashi
-      - Philippe Di Francesco
-      - Jean-Bernard Zuber
-      - Graeme Segal
-      - Gregory Moore
-      # string theory / D-branes / matrix models
-      - Joseph Polchinski
-      - Michael Green
-      - John Schwarz
-      - Joel Scherk
-      - Pierre Ramond
-      - Lars Brink
-      - Claudio Lovelace
-      - Tom Banks
-      - Willy Fischler
-      - Leonard Susskind
-      - Michael R. Douglas
-      - Emil Martinec
-      - Jeffrey A. Harvey
-      - Lance Dixon
       - Cumrun Vafa
-      - Petr Horava
-      # black holes / semiclassical gravity
-      - Stephen Hawking
-      - Jacob Bekenstein
-      - Gary Gibbons
-      - James Hartle
-      - Robert Wald
-      - William Unruh
-      - Brandon Carter
-      - Werner Israel
-      - Bryce DeWitt
-      - Stanley Deser
-      - Charles Misner
-      - Richard Arnowitt
-      - James W. York
-      - Ted Jacobson
-      - Malcolm Perry
     affiliations:
-      - Princeton, Inst. Advanced Study
+      # Harvard
+      - Harvard University
+      - Department of Physics, Harvard
+      - Center for the Fundamental Laws of Nature
+      - CFLN
+      - Jefferson Physical Laboratory
+      - Jefferson Lab, Harvard
+      - Harvard CMSA
+      - Center of Mathematical Sciences and Applications
+      # MIT
+      - Massachusetts Institute of Technology
+      - MIT
+      - Center for Theoretical Physics, MIT
+      - CTP, MIT
+      - MIT Center for Theoretical Physics
+      - Department of Physics, MIT
+      - Cambridge, MA 02139
+      # Stanford
+      - Stanford University
+      - Stanford Institute for Theoretical Physics
+      - SITP
+      - Department of Physics, Stanford
+      - SLAC National Accelerator Laboratory
+      - SLAC
+      - Stanford Linear Accelerator Center
+      - Kavli Institute for Particle Astrophysics and Cosmology
+      - KIPAC
+      # Princeton / IAS
+      - Princeton University
+      - Department of Physics, Princeton
+      - Princeton Center for Theoretical Science
+      - PCTS
+      - Jadwin Hall
+      - Princeton Gravity Initiative
+      - Institute for Advanced Study
+      - Inst. Advanced Study
+      - Inst Advanced Study
+      - School of Natural Sciences, Institute for Advanced Study
+      - IAS, Princeton
+      # Berkeley
+      - University of California, Berkeley
+      - UC Berkeley
+      - Berkeley Center for Theoretical Physics
+      - BCTP
+      - Department of Physics, Berkeley
+      - Lawrence Berkeley National Laboratory
+      - LBNL
+      - Berkeley Lab
+      # Perimeter
       - Perimeter Institute
-      - CERN
   llm_reranker:
     research_interest: >
       I work on non-perturbative QFT with three main threads.
