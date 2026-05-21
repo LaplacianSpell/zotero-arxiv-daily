@@ -20,7 +20,8 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
-    watchlist_hit: Optional[dict] = None   # {'type': 'author'|'affiliation', 'matched': str}
+    watchlist_hit: Optional[dict] = None   # {'type': 'author', 'matched': str} — author pin
+    affiliation_hit: Optional[dict] = None # {'type': 'affiliation', 'matched': str} — score boost only
     llm_reason: Optional[str] = None       # one-sentence LLM explanation of relevance score
 
     _TLDR_SYSTEM = (

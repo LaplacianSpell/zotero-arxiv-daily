@@ -72,14 +72,21 @@ def _format_tldr(tldr: str) -> str:
 
 
 def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,
-                   watchlist_hit=None, llm_reason=None):
+                   watchlist_hit=None, llm_reason=None, affiliation_hit=None):
     if watchlist_hit:
-        label = "📌 WATCHLIST — {wtype}: {matched}".format(
-            wtype=watchlist_hit['type'], matched=watchlist_hit['matched'])
+        label = "📌 {matched}".format(matched=watchlist_hit['matched'])
         watchlist_row = (
             '\n    <tr><td style="padding: 4px 0;">'
             '<span style="background-color:#c0392b;color:white;padding:3px 8px;'
             'border-radius:4px;font-size:13px;font-weight:bold;">{label}</span>'
+            '</td></tr>'
+        ).format(label=label)
+    elif affiliation_hit:
+        label = "🏛 {matched}".format(matched=affiliation_hit['matched'])
+        watchlist_row = (
+            '\n    <tr><td style="padding: 4px 0;">'
+            '<span style="background-color:#2471a3;color:white;padding:3px 8px;'
+            'border-radius:4px;font-size:13px;">{label}</span>'
             '</td></tr>'
         ).format(label=label)
     else:
@@ -212,6 +219,7 @@ def render_email(papers: list[Paper], classic_papers: list[Paper] = None) -> str
                 p.title, authors, rate, p.tldr, p.pdf_url, affiliations,
                 watchlist_hit=getattr(p, 'watchlist_hit', None),
                 llm_reason=getattr(p, 'llm_reason', None),
+                affiliation_hit=getattr(p, 'affiliation_hit', None),
             ))
 
     # ── Classic picks ────────────────────────────────────────────────────────

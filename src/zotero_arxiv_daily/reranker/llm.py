@@ -121,7 +121,12 @@ class LlmReranker(BaseReranker):
         return None
 
     def _check_watchlist(self, paper: Paper) -> Optional[dict]:
-        return self._check_author_watchlist(paper) or self._check_affiliation_watchlist(paper)
+        """Return author hit (→ pin) or None. Affiliation is handled separately as a score boost."""
+        return self._check_author_watchlist(paper)
+
+    def _check_affiliation_boost(self, paper: Paper) -> Optional[dict]:
+        """Return affiliation hit dict for score boost, or None."""
+        return self._check_affiliation_watchlist(paper)
 
     # ── LLM scoring ──────────────────────────────────────────────────────────
     def _llm_score(self, paper: Paper) -> tuple[float, str]:
@@ -179,25 +184,36 @@ class LlmReranker(BaseReranker):
         logger.info(f"LLM reranker: processing {len(candidates)} papers "
                     f"(model={self.score_model})")
 
-        # 1. Watchlist pass
+        # 1. Author watchlist → pin (score = 100, skip LLM scoring)
         for paper in candidates:
-            paper.watchlist_hit = self._check_watchlist(paper)  # type: ignore[attr-defined]
+            paper.watchlist_hit = self._check_watchlist(paper)   # author only
+            paper.affiliation_hit = self._check_affiliation_boost(paper)  # type: ignore[attr-defined]
 
-        watchlisted = [p for p in candidates if p.watchlist_hit]
-        to_score = [p for p in candidates if not p.watchlist_hit]
+        pinned    = [p for p in candidates if p.watchlist_hit]
+        to_score  = [p for p in candidates if not p.watchlist_hit]
 
-        if watchlisted:
-            labels = [f"{p.watchlist_hit['type']}:{p.watchlist_hit['matched']}" for p in watchlisted]
-            logger.info(f"Watchlist pinned {len(watchlisted)} paper(s): {labels}")
+        if pinned:
+            labels = [f"{p.watchlist_hit['type']}:{p.watchlist_hit['matched']}" for p in pinned]
+            logger.info(f"Author watchlist pinned {len(pinned)} paper(s): {labels}")
 
-        for p in watchlisted:
+        aff_boosted = [p for p in to_score if p.affiliation_hit]
+        if aff_boosted:
+            labels = [p.affiliation_hit['matched'] for p in aff_boosted]
+            logger.info(f"Affiliation boost ({len(aff_boosted)} papers): {labels}")
+
+        for p in pinned:
             p.score = WATCHLIST_SCORE
             p.llm_reason = None  # type: ignore[attr-defined]
 
-        # 2. LLM scoring for the rest
+        # 2. LLM score all non-pinned papers
         logger.info(f"LLM scoring {len(to_score)} papers…")
         for paper in to_score:
             score, reason = self._llm_score(paper)
+            # Affiliation boost: final = 0.8 * llm_score + 0.2 * 10
+            # A perfect-relevance paper scores 10; affiliation adds up to +2 on top of 80% llm.
+            if paper.affiliation_hit:
+                score = 0.8 * score + 2.0
+                logger.debug(f"Affiliation boost applied → {score:.1f} for '{paper.title[:50]}'")
             paper.score = score
             paper.llm_reason = reason  # type: ignore[attr-defined]
             if self.batch_delay > 0:
