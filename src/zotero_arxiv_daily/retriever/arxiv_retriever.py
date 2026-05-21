@@ -137,7 +137,10 @@ class ArxivRetriever(BaseRetriever):
         logger.info(f"arXiv categories (cleaned): {categories}")
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
 
-        if self.days_back <= 1:
+        # In debug mode always use RSS — Search API date-range queries are very
+        # slow regardless of result count; there's no point waiting for them
+        # during a test run.
+        if self.config.executor.debug or self.days_back <= 1:
             return self._retrieve_via_rss(categories, include_cross_list)
         else:
             return self._retrieve_via_search(categories, include_cross_list)
