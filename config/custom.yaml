@@ -28,7 +28,7 @@ executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
   reranker: llm
-  max_paper_num: 5
+  max_paper_num: 7
 
 reranker:
   watchlist:
