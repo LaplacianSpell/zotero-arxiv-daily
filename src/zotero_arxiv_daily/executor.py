@@ -10,6 +10,7 @@ from .reranker import get_reranker_cls
 from .construct_email import render_email
 from .utils import send_email
 from .classic_recommender import ClassicRecommender, save_sent_ids
+from .reranker.llm import WATCHLIST_SCORE
 from openai import OpenAI
 from tqdm import tqdm
 
@@ -111,12 +112,30 @@ class Executor:
 
         reranked_papers = []
         if len(all_papers) > 0:
-            logger.info("Generating affiliations for all papers (needed for watchlist matching)...")
-            for p in tqdm(all_papers):
+            max_n = self.config.executor.max_paper_num
+
+            # Stage 1: LLM relevance score only (parallel, no affiliation boost yet)
+            logger.info("Stage 1: LLM scoring all papers...")
+            stage1 = self.reranker.rerank(all_papers, corpus)
+
+            # Stage 2: affiliation boost on top 2×N candidates only
+            # This avoids running affiliation extraction on hundreds of papers.
+            candidates = stage1[:max_n * 2]
+            logger.info(f"Stage 2: generating affiliations for top {len(candidates)} candidates...")
+            for p in tqdm(candidates):
                 p.generate_affiliations(self.openai_client, self.config.llm)
-            logger.info("Reranking papers...")
-            reranked_papers = self.reranker.rerank(all_papers, corpus)
-            reranked_papers = reranked_papers[:self.config.executor.max_paper_num]
+
+            # Re-score with affiliation boost and re-sort
+            for p in candidates:
+                if p.score < WATCHLIST_SCORE:  # don't touch pinned papers
+                    hit = self.reranker._check_affiliation_boost(p)
+                    p.affiliation_hit = hit
+                    if hit:
+                        p.score = 0.8 * p.score + 2.0
+                        logger.debug(f"Affiliation boost → {p.score:.1f} '{p.title[:50]}'")
+
+            reranked_papers = sorted(candidates, key=lambda p: p.score, reverse=True)[:max_n]
+
             logger.info("Generating TLDR for top papers...")
             for p in tqdm(reranked_papers):
                 p.generate_tldr(self.openai_client, self.config.llm)

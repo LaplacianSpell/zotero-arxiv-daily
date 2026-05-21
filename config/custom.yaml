@@ -162,7 +162,8 @@ reranker:
       connections to quantum many-body physics and quantum information.
       Key researchers: Harlow, Penington, Maldacena, Shenker.
     score_model: deepseek-v4-flash
-    batch_delay: 0.5
+    parallel_workers: 5
+    batch_delay: 0.0
 
 classic_recommender:
   enabled: true

@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import numpy as np
@@ -76,7 +77,8 @@ class LlmReranker(BaseReranker):
         # The main generation model (deepseek-v4-pro) is a reasoning model whose
         # <think> blocks consume tokens without adding value for a 0-10 relevance score.
         self.score_model: str = llm_cfg.get("score_model") or "deepseek-v4-flash"
-        self.batch_delay: float = float(llm_cfg.get("batch_delay", 0.3))
+        self.batch_delay: float = float(llm_cfg.get("batch_delay", 0.0))
+        self.parallel_workers: int = int(llm_cfg.get("parallel_workers", 5))
 
         # watchlist
         raw_wl = config.reranker.get("watchlist", {})
@@ -210,18 +212,26 @@ class LlmReranker(BaseReranker):
             p.score = WATCHLIST_SCORE
             p.llm_reason = None  # type: ignore[attr-defined]
 
-        # 2. LLM score all non-pinned papers
-        logger.info(f"LLM scoring {len(to_score)} papers…")
-        for paper in to_score:
+        # 2. LLM score all non-pinned papers — parallel
+        logger.info(f"LLM scoring {len(to_score)} papers "
+                    f"(workers={self.parallel_workers})…")
+
+        def _score_one(paper):
             score, reason = self._llm_score(paper)
-            # Affiliation boost: final = 0.8 * llm_score + 0.2 * 10
-            # A perfect-relevance paper scores 10; affiliation adds up to +2 on top of 80% llm.
-            if paper.affiliation_hit:
-                score = 0.8 * score + 2.0
-                logger.debug(f"Affiliation boost applied → {score:.1f} for '{paper.title[:50]}'")
-            paper.score = score
-            paper.llm_reason = reason  # type: ignore[attr-defined]
             if self.batch_delay > 0:
                 time.sleep(self.batch_delay)
+            return paper, score, reason
+
+        with ThreadPoolExecutor(max_workers=self.parallel_workers) as pool:
+            futures = {pool.submit(_score_one, p): p for p in to_score}
+            for future in as_completed(futures):
+                paper, score, reason = future.result()
+                # Affiliation boost applied here after parallel scoring
+                # (affiliations are populated before rerank in executor)
+                if paper.affiliation_hit:
+                    score = 0.8 * score + 2.0
+                    logger.debug(f"Affiliation boost → {score:.1f} '{paper.title[:50]}'")
+                paper.score = score
+                paper.llm_reason = reason  # type: ignore[attr-defined]
 
         return sorted(candidates, key=lambda p: p.score, reverse=True)
