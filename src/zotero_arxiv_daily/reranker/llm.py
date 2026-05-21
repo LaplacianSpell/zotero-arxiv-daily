@@ -134,16 +134,22 @@ class LlmReranker(BaseReranker):
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_msg},
                 ],
-                max_tokens=150,
+                max_tokens=512,
                 temperature=0.0,
             )
             raw = resp.choices[0].message.content.strip()
-            # Strip accidental markdown fences
+            logger.debug(f"LLM raw response for '{paper.title[:40]}': {raw[:200]}")
+            # Strip markdown fences and <think>...</think> blocks (DeepSeek reasoning)
+            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
             raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE).strip("`").strip()
-            data = json.loads(raw)
+            # Find the JSON object even if there is surrounding text
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if not m:
+                raise ValueError(f"No JSON object found in response: {raw[:200]}")
+            data = json.loads(m.group())
             score = max(0.0, min(10.0, float(data["score"])))
             reason = str(data.get("reason", ""))
-            logger.debug(f"LLM [{score:.0f}/10] '{paper.title[:55]}…' — {reason}")
+            logger.info(f"LLM [{score:.0f}/10] '{paper.title[:55]}…'")
             return score, reason
         except Exception as exc:
             logger.warning(f"LLM scoring failed for '{paper.title[:60]}': {exc}")

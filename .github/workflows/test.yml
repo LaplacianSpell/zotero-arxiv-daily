@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7.1.4
@@ -23,21 +25,21 @@ jobs:
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          DEBUG: "true"
         run: |
-          export DEBUG=true
           if [ -n "$CUSTOM_CONFIG" ]; then
             printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-            echo "Using CUSTOM_CONFIG variable:"
+            echo "Using CUSTOM_CONFIG variable"
           else
-            echo "Using committed config/custom.yaml:"
+            echo "Using committed config/custom.yaml"
           fi
-          cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
 
       - name: Commit updated sent-classics state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
           git add state/sent_classics.json
           if git diff --staged --quiet; then
             echo "No classic state changes to commit"

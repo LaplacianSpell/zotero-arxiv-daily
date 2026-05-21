@@ -2,19 +2,20 @@ name: Send emails (Mon + Thu)
 on:
   workflow_dispatch:
   schedule:
-    # Mon 22:00 UTC — covers Thu+Fri+Mon submissions (arxiv Mon batch = Fri papers)
     - cron: '0 22 * * 1'
-    # Thu 22:00 UTC — covers Tue+Wed+Thu submissions
     - cron: '0 22 * * 4'
 
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # needed to commit back sent_classics.json
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Always fetch the latest state (including sent_classics.json updates)
+          fetch-depth: 1
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
@@ -31,17 +32,18 @@ jobs:
         run: |
           if [ -n "$CUSTOM_CONFIG" ]; then
             printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-            echo "Using CUSTOM_CONFIG variable:"
+            echo "Using CUSTOM_CONFIG variable"
           else
-            echo "Using committed config/custom.yaml:"
+            echo "Using committed config/custom.yaml"
           fi
-          cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
 
       - name: Commit updated sent-classics state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Pull latest in case of concurrent runs
+          git pull --rebase origin main || true
           git add state/sent_classics.json
           if git diff --staged --quiet; then
             echo "No classic state changes to commit"
