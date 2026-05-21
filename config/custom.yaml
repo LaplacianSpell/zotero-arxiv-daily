@@ -191,7 +191,7 @@ reranker:
       path integrals; holographic entanglement entropy in AdS/CFT and beyond;
       connections to quantum many-body physics and quantum information.
       Key researchers: Harlow, Penington, Maldacena, Shenker.
-    score_model: deepseek-chat   # non-reasoning model: faster, cheaper, no <think> blocks
+    score_model: deepseek-v4-flash
     batch_delay: 0.5
 
 classic_recommender:

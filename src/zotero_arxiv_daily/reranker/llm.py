@@ -75,7 +75,7 @@ class LlmReranker(BaseReranker):
         # For scoring tasks, prefer deepseek-chat (non-reasoning, fast+cheap).
         # The main generation model (deepseek-v4-pro) is a reasoning model whose
         # <think> blocks consume tokens without adding value for a 0-10 relevance score.
-        self.score_model: str = llm_cfg.get("score_model") or "deepseek-chat"
+        self.score_model: str = llm_cfg.get("score_model") or "deepseek-v4-flash"
         self.batch_delay: float = float(llm_cfg.get("batch_delay", 0.3))
 
         # watchlist
@@ -137,7 +137,7 @@ class LlmReranker(BaseReranker):
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_msg},
                 ],
-                max_tokens=1024,
+                max_tokens=4096,
                 temperature=0.0,
             )
             raw = resp.choices[0].message.content.strip()

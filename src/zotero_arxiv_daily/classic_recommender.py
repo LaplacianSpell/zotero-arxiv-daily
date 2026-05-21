@@ -205,7 +205,7 @@ def _llm_pick(
                     f"Candidate classic papers:\n\n" + "\n\n".join(lines)
                 )},
             ],
-            max_tokens=800,
+            max_tokens=4096,
             temperature=0.5,  # varied so daily picks differ
         )
         raw = resp.choices[0].message.content.strip()
