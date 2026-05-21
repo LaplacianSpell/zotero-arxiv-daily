@@ -121,23 +121,15 @@ class ArxivRetriever(BaseRetriever):
 
     @staticmethod
     def _clean_categories(raw) -> list[str]:
-        """
-        Robustly convert OmegaConf ListConfig / raw YAML values to plain strings.
-
-        Handles several failure modes:
-        - OmegaConf item printed with surrounding quotes: '"hep-lat"'
-        - Entire list stored as a single string: '["hep-th","hep-lat"]'
-        - Mixed quoting: ["hep-th", \'hep-lat\']
-        """
+        """Convert OmegaConf ListConfig / raw YAML to a list of plain category strings."""
         import re as _re
-        # If it's a single string that looks like a list, parse it
+        _JUNK = re.compile(r"[\s\'\"\[\]]")
         if isinstance(raw, str):
-            # e.g. '["hep-th","hep-lat"]' or 'hep-th,hep-lat'
-            items = _re.split(r'[,\s]+', raw.strip("[]"))
+            items = _re.split(r"[,\s]+", raw.strip("[]"))
         else:
             items = list(raw)
-        # Strip all quote chars and whitespace from each item
-        return [_re.sub(r"""[\'"\s]""", "", str(c)) for c in items if str(c).strip("\'"\s")]
+        result = [_JUNK.sub("", str(c)) for c in items]
+        return [c for c in result if c]
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
         raw_cats = self.config.source.arxiv.category
