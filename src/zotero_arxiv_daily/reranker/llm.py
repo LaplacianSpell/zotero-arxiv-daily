@@ -108,16 +108,21 @@ class LlmReranker(BaseReranker):
 
     def _check_affiliation_watchlist(self, paper: Paper) -> Optional[dict]:
         """
-        paper.affiliations is None at rerank time (resolved later by LLM in
-        executor.py). As a best-effort heuristic we search the first 8 KB of
-        paper.full_text (raw LaTeX / HTML) for the watched affiliation strings.
+        Match against paper.affiliations (LLM-extracted list, populated before reranking).
+        Falls back to None if affiliations were not extracted successfully.
+        Does NOT search full_text — that causes false positives from references/acknowledgments.
         """
-        if not self.watched_affiliations or not paper.full_text:
+        if not self.watched_affiliations:
             return None
-        header = self._norm(paper.full_text[:8000])
-        for aff in self.watched_affiliations:
-            if self._norm(aff) in header:
-                return {"type": "affiliation", "matched": aff}
+        affiliations: list[str] = getattr(paper, "affiliations", None) or []
+        if not affiliations:
+            return None
+        norm_watched = [self._norm(w) for w in self.watched_affiliations]
+        for aff in affiliations:
+            an = self._norm(aff)
+            for wn in norm_watched:
+                if wn in an or an in wn:
+                    return {"type": "affiliation", "matched": aff}
         return None
 
     def _check_watchlist(self, paper: Paper) -> Optional[dict]:
