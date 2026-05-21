@@ -288,6 +288,13 @@ class ClassicRecommender:
             if config.reranker.get("watchlist") else {}
         self.watched_authors: list[str] = wl.get("authors") or []
 
+        # extra_authors: additional author names for the INSPIRE classic pool only,
+        # independent of the new-paper watchlist (useful for historical/deceased authors)
+        extra_raw = cfg.get("extra_authors") or []
+        self.extra_authors: list[str] = list(extra_raw) if extra_raw else []
+        # Pool authors = watchlist authors + extra_authors (deduplicated)
+        self._pool_authors: list[str] = list(dict.fromkeys(self.watched_authors + self.extra_authors))
+
         self.inspire = InspireHEPClient(timeout=self.inspire_timeout)
 
     def recommend(self, corpus: list[CorpusPaper]) -> tuple[list[Paper], set[str]]:
@@ -309,8 +316,8 @@ class ClassicRecommender:
         logger.info("Classic recommender: querying INSPIRE-HEP…")
         pool: dict[str, dict] = {}
 
-        if self.pool_mode in ("watchlist_authors", "both") and self.watched_authors:
-            for p in self.inspire.get_author_papers(self.watched_authors, self.pool_size, self.min_citations):
+        if self.pool_mode in ("watchlist_authors", "both") and self._pool_authors:
+            for p in self.inspire.get_author_papers(self._pool_authors, self.pool_size, self.min_citations):
                 pool.setdefault(p["arxiv_id"], p)
             logger.info(f"  watchlist_authors: {len(pool)} papers")
 

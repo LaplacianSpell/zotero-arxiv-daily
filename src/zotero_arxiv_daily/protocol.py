@@ -23,40 +23,56 @@ class Paper:
     watchlist_hit: Optional[dict] = None   # {'type': 'author'|'affiliation', 'matched': str}
     llm_reason: Optional[str] = None       # one-sentence LLM explanation of relevance score
 
-    def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
-        lang = llm_params.get('language', 'English')
-        prompt = f"Given the following information of a paper, generate a one-sentence TLDR summary in {lang}:\n\n"
-        if self.title:
-            prompt += f"Title:\n {self.title}\n\n"
+    _TLDR_SYSTEM = (
+        "You are an expert theoretical physicist who writes concise, technically precise "
+        "paper summaries for a researcher in non-perturbative QFT, holography, and lattice "
+        "gauge theory. Your summaries must follow exactly the structure given."
+    )
 
-        if self.abstract:
-            prompt += f"Abstract: {self.abstract}\n\n"
+    _TLDR_PROMPT_TEMPLATE = """Given the following paper, write a structured summary with these five sections.
+Each section should be 1-3 sentences, technically precise, and aimed at an expert reader.
+Use plain text (no markdown, no bullet symbols).
 
-        if self.full_text:
-            prompt += f"Preview of main content:\n {self.full_text}\n\n"
+Title: {title}
 
+Abstract:
+{abstract}
+
+{fulltext_block}
+
+--- Output format (use exactly these labels) ---
+Background and context:
+Problem addressed:
+Methods:
+Conclusions:
+Open problems:
+"""
+
+    def _generate_tldr_with_llm(self, openai_client: OpenAI, llm_params: dict) -> str:
         if not self.full_text and not self.abstract:
             logger.warning(f"Neither full text nor abstract is provided for {self.url}")
             return "Failed to generate TLDR. Neither full text nor abstract is provided"
-        
-        # use gpt-4o tokenizer for estimation
-        enc = tiktoken.encoding_for_model("gpt-4o")
-        prompt_tokens = enc.encode(prompt)
-        prompt_tokens = prompt_tokens[:4000]  # truncate to 4000 tokens
-        prompt = enc.decode(prompt_tokens)
-        
+
+        fulltext_block = ""
+        if self.full_text:
+            enc = tiktoken.encoding_for_model("gpt-4o")
+            ft_tokens = enc.encode(self.full_text)[:3000]
+            fulltext_block = "Preview of main content:\n" + enc.decode(ft_tokens)
+
+        prompt = self._TLDR_PROMPT_TEMPLATE.format(
+            title=self.title or "",
+            abstract=self.abstract or "",
+            fulltext_block=fulltext_block,
+        )
+
         response = openai_client.chat.completions.create(
             messages=[
-                {
-                    "role": "system",
-                    "content": f"You are an assistant who perfectly summarizes scientific paper, and gives the core idea of the paper to the user. Your answer should be in {lang}.",
-                },
+                {"role": "system", "content": self._TLDR_SYSTEM},
                 {"role": "user", "content": prompt},
             ],
-            **llm_params.get('generation_kwargs', {})
+            **llm_params.get("generation_kwargs", {}),
         )
-        tldr = response.choices[0].message.content
-        return tldr
+        return response.choices[0].message.content.strip()
     
     def generate_tldr(self, openai_client:OpenAI,llm_params:dict) -> str:
         try:

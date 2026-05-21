@@ -53,6 +53,24 @@ def get_empty_html():
   """
 
 
+def _format_tldr(tldr: str) -> str:
+    """Convert structured 5-point TLDR text to simple HTML paragraphs."""
+    if not tldr:
+        return ""
+    labels = [
+        "Background and context:",
+        "Problem addressed:",
+        "Methods:",
+        "Conclusions:",
+        "Open problems:",
+    ]
+    # Bold the section labels, wrap each section in a paragraph
+    result = tldr
+    for label in labels:
+        result = result.replace(label, f"<br><strong>{label}</strong> ")
+    return result.lstrip("<br>")
+
+
 def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,
                    watchlist_hit=None, llm_reason=None):
     if watchlist_hit:
@@ -89,7 +107,7 @@ def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,
     </td></tr>
     {llm_reason_row}
     <tr><td style="font-size: 14px; color: #333; padding: 8px 0;">
-        <strong>TLDR:</strong> {tldr}
+        <strong>Summary:</strong><br>{tldr_html}
     </td></tr>
     <tr><td style="padding: 8px 0;">
         <a href="{pdf_url}" style="display:inline-block;text-decoration:none;
@@ -99,7 +117,8 @@ def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,
     </table>
 """
     return block.format(
-        title=title, authors=authors, rate=rate, tldr=tldr,
+        title=title, authors=authors, rate=rate,
+        tldr_html=_format_tldr(tldr),
         pdf_url=pdf_url, affiliations=affiliations or 'Unknown Affiliation',
         watchlist_row=watchlist_row, llm_reason_row=llm_reason_row,
     )
@@ -111,9 +130,9 @@ def get_classic_block_html(title, authors, citations, tldr, pdf_url, reason=""):
     reason_row = ""
     if reason:
         reason_row = (
-            '<tr><td style="font-size:13px;color:#555;padding:4px 0;font-style:italic;">'
-            '💡 {}</td></tr>'
-        ).format(reason)
+            '<tr><td style="font-size:13px;color:#333;padding:8px 0;">'
+            '<strong>Summary:</strong><br>{}</td></tr>'
+        ).format(_format_tldr(reason))
 
     return """
     <table border="0" cellpadding="0" cellspacing="0" width="100%"

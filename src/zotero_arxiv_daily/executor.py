@@ -125,6 +125,11 @@ class Executor:
         # Classic picks (returns updated sent-ID set to persist after send)
         classic_papers, new_sent_ids = self.classic_recommender.recommend(corpus)
 
+        if classic_papers:
+            logger.info("Generating TLDR for classic papers...")
+            for p in tqdm(classic_papers):
+                p.generate_tldr(self.openai_client, self.config.llm)
+
         logger.info("Sending email...")
         email_content = render_email(reranked_papers, classic_papers=classic_papers)
         send_email(self.config, email_content)

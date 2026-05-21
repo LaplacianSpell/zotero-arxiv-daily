@@ -172,3 +172,68 @@ classic_recommender:
   min_citations: 200
   max_paper_age_years: null
   inspire_timeout: 25
+  # extra_authors: included in INSPIRE pool only, not in new-paper watchlist
+  # (historical / deceased authors whose old papers we want but who won't post new arxiv preprints)
+  extra_authors:
+    # QFT / solitons / instantons / anomalies
+    - Sidney Coleman
+    - Curtis G. Callan
+    - Roman Jackiw
+    - Gerard t Hooft
+    - Alexander M. Polyakov
+    - Stanley Mandelstam
+    - Kenneth G. Wilson
+    - Julian Schwinger
+    - Yoichiro Nambu
+    - Jeffrey Goldstone
+    - Valery Rubakov
+    - Steven Weinberg
+    # anomalies / chiral fermions / lattice
+    - Stephen Adler
+    - John Bell
+    - Julius Wess
+    - Bruno Zumino
+    - Luis Alvarez-Gaume
+    - Paul Ginsparg
+    - Martin Luscher
+    - Herbert Neuberger
+    - Holger Bech Nielsen
+    - Michael Creutz
+    # 2d CFT / boundary / integrable
+    - Alexander Zamolodchikov
+    - Alexei Zamolodchikov
+    - V. A. Fateev
+    - John Cardy
+    - Daniel Friedan
+    - Ian Affleck
+    - Andreas Ludwig
+    - Nobuyuki Ishibashi
+    - Philippe Di Francesco
+    - Jean-Bernard Zuber
+    - Gregory Moore
+    # string theory / D-branes / old holographic intuition
+    - Joseph Polchinski
+    - Michael Green
+    - John Schwarz
+    - Joel Scherk
+    - Pierre Ramond
+    - Tom Banks
+    - Willy Fischler
+    - Leonard Susskind
+    - Michael R. Douglas
+    - Emil Martinec
+    - Jeffrey A. Harvey
+    - Lance Dixon
+    - Petr Horava
+    # black holes / semiclassical gravity
+    - Stephen Hawking
+    - Jacob Bekenstein
+    - Gary Gibbons
+    - James Hartle
+    - Robert Wald
+    - William Unruh
+    - Brandon Carter
+    - Werner Israel
+    - Bryce DeWitt
+    - Stanley Deser
+    - Ted Jacobson
