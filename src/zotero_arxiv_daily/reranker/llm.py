@@ -72,7 +72,10 @@ class LlmReranker(BaseReranker):
         default_model = OmegaConf.to_container(config.llm.generation_kwargs, resolve=True).get(
             "model", "deepseek-v4-pro"
         )
-        self.score_model: str = llm_cfg.get("score_model") or default_model
+        # For scoring tasks, prefer deepseek-chat (non-reasoning, fast+cheap).
+        # The main generation model (deepseek-v4-pro) is a reasoning model whose
+        # <think> blocks consume tokens without adding value for a 0-10 relevance score.
+        self.score_model: str = llm_cfg.get("score_model") or "deepseek-chat"
         self.batch_delay: float = float(llm_cfg.get("batch_delay", 0.3))
 
         # watchlist
@@ -134,19 +137,35 @@ class LlmReranker(BaseReranker):
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_msg},
                 ],
-                max_tokens=512,
+                max_tokens=1024,
                 temperature=0.0,
             )
             raw = resp.choices[0].message.content.strip()
-            logger.debug(f"LLM raw response for '{paper.title[:40]}': {raw[:200]}")
-            # Strip markdown fences and <think>...</think> blocks (DeepSeek reasoning)
-            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-            raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE).strip("`").strip()
-            # Find the JSON object even if there is surrounding text
-            m = re.search(r"\{.*\}", raw, re.DOTALL)
-            if not m:
-                raise ValueError(f"No JSON object found in response: {raw[:200]}")
-            data = json.loads(m.group())
+            logger.debug(f"LLM raw response for '{paper.title[:40]}': {raw[:300]}")
+
+            # Extract JSON robustly from DeepSeek responses:
+            # 1. Try the text AFTER </think> first (normal case)
+            # 2. Fall back to searching inside the <think> block (model sometimes
+            #    writes the JSON answer inside its reasoning without repeating it)
+            # 3. Fall back to searching the whole raw string
+            def _extract_json(text: str) -> dict | None:
+                text = re.sub(r"^```[a-z]*\n?", "", text, flags=re.MULTILINE).strip("`").strip()
+                m = re.search(r"\{[^{}]*\}", text, re.DOTALL)
+                if m:
+                    try:
+                        return json.loads(m.group())
+                    except json.JSONDecodeError:
+                        pass
+                return None
+
+            think_match = re.search(r"<think>(.*?)</think>", raw, re.DOTALL)
+            think_text = think_match.group(1) if think_match else ""
+            after_think = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
+            data = _extract_json(after_think) or _extract_json(think_text) or _extract_json(raw)
+            if data is None:
+                raise ValueError(f"No JSON object found in response: {raw[:300]}")
+
             score = max(0.0, min(10.0, float(data["score"])))
             reason = str(data.get("reason", ""))
             logger.info(f"LLM [{score:.0f}/10] '{paper.title[:55]}…'")

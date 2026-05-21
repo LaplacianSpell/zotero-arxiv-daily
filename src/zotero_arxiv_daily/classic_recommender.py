@@ -209,14 +209,25 @@ def _llm_pick(
             temperature=0.5,  # varied so daily picks differ
         )
         raw = resp.choices[0].message.content.strip()
-        # Strip DeepSeek <think>...</think> reasoning blocks before parsing
-        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-        raw = re.sub(r"^```[a-z]*\n?", "", raw, flags=re.MULTILINE).strip("`").strip()
-        # Extract JSON array even if surrounded by text
-        m = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not m:
+
+        # Robust extraction: try after </think>, then inside <think>, then whole raw
+        def _try_parse_array(text: str):
+            text = re.sub(r"^```[a-z]*\n?", "", text, flags=re.MULTILINE).strip("`").strip()
+            m = re.search(r"\[.*\]", text, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except json.JSONDecodeError:
+                    pass
+            return None
+
+        think_match = re.search(r"<think>(.*?)</think>", raw, re.DOTALL)
+        think_text = think_match.group(1) if think_match else ""
+        after_think = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
+        picks = _try_parse_array(after_think) or _try_parse_array(think_text) or _try_parse_array(raw)
+        if picks is None:
             raise ValueError(f"No JSON array in response: {raw[:300]}")
-        picks = json.loads(m.group())
         result = []
         for pick in picks[:n_picks]:
             aid = pick.get("arxiv_id", "").strip()
