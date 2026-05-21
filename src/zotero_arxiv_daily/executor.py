@@ -10,7 +10,7 @@ from .reranker import get_reranker_cls
 from .construct_email import render_email
 from .utils import send_email
 from .classic_recommender import ClassicRecommender, save_sent_ids
-from .reranker.llm import WATCHLIST_SCORE
+from .reranker.llm import WATCHLIST_SCORE, LlmReranker
 from openai import OpenAI
 from tqdm import tqdm
 
@@ -126,13 +126,15 @@ class Executor:
                 p.generate_affiliations(self.openai_client, self.config.llm)
 
             # Re-score with affiliation boost and re-sort
-            for p in candidates:
-                if p.score < WATCHLIST_SCORE:  # don't touch pinned papers
-                    hit = self.reranker._check_affiliation_boost(p)
-                    p.affiliation_hit = hit
-                    if hit:
-                        p.score = 0.8 * p.score + 2.0
-                        logger.debug(f"Affiliation boost → {p.score:.1f} '{p.title[:50]}'")
+            # Only LlmReranker supports affiliation boost; skip for other rerankers.
+            if isinstance(self.reranker, LlmReranker):
+                for p in candidates:
+                    if p.score < WATCHLIST_SCORE:
+                        hit = self.reranker._check_affiliation_boost(p)
+                        p.affiliation_hit = hit
+                        if hit:
+                            p.score = 0.8 * p.score + 2.0
+                            logger.debug(f"Affiliation boost → {p.score:.1f} '{p.title[:50]}'")
 
             reranked_papers = sorted(candidates, key=lambda p: p.score, reverse=True)[:max_n]
 
