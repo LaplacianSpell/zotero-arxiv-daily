@@ -140,12 +140,16 @@ class InspireHEPClient:
         per_author = max(size // max(len(authors), 1), 15)
         for author in authors:
             surname = author.strip().split()[-1]
-            for p in self._query(f"a {surname} and tc hep-th", per_author, min_citations):
+            # INSPIRE syntax: "a Surname" for author search.
+            # No category filter — min_citations threshold keeps results relevant,
+            # and some classic papers are pre-arXiv (no arxiv category metadata).
+            for p in self._query(f"a {surname}", per_author, min_citations):
                 all_papers.setdefault(p["arxiv_id"], p)
             time.sleep(0.3)
         return list(all_papers.values())
 
     def get_field_papers(self, size: int, min_citations: int) -> list[dict]:
+        # INSPIRE "hep-th" searches the arxiv category field
         return self._query("hep-th", size, min_citations)
 
 
