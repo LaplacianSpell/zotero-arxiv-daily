@@ -1,7 +1,7 @@
 zotero:
   user_id: ${oc.env:ZOTERO_ID}
   api_key: ${oc.env:ZOTERO_KEY}
-  include_path: null
+  include_path: ["1. Workflow/**"]
 
 email:
   sender: ${oc.env:SENDER}
@@ -16,55 +16,188 @@ llm:
     base_url: https://api.deepseek.com
   generation_kwargs:
     model: deepseek-v4-pro
-    max_tokens: 4096
+    max_tokens: 16384
 
 source:
   arxiv:
-    category: ["hep-th"]
-    include_cross_list: true   # pick up hep-ph / math-ph cross-lists
-    days_back: 3               # fetch last 3 arxiv working days per run
+    category: ["hep-th", "hep-lat"]
+    include_cross_list: false
+    days_back: 3
 
 executor:
   debug: ${oc.env:DEBUG,null}
   source: ['arxiv']
   reranker: llm
-  max_paper_num: 30  # hep-th daily volume is manageable
+  max_paper_num: 5
 
 reranker:
   watchlist:
     authors:
-      # Add or remove names freely — substring match, so "Witten" catches "Edward Witten"
-      - Witten
-      - Seiberg
-      - Kapustin
-      - Gaiotto
-      - Cordova
-      - Tachikawa
-      - Komargodski
-      - Shenker
+      # generalized symmetry / defect / lattice / mathematical QFT
+      - Shu-Heng Shao
+      - Davide Gaiotto
+      - Ho Tat Lam
+      - Nathan Seiberg
+      - David Tong
+      - Joao Penedones
+      - Clay Cordova
+      - Thomas T. Dumitrescu
+      - Zohar Komargodski
+      - David Simmons-Duffin
+      - Alexander V. Zhiboedov
+      - Victor Gorbenko
+      - Yifan Wang
+      - Silviu Pufu
+      - Simone Giombi
+      - Henry W. Lin
+      - Xi Yin
+      - Pedro Vieira
+      - Simon Caron-Huot
+      - Igor Klebanov
+      - Yuji Tachikawa
+      # holography / black holes / quantum gravity / QI
+      - Daniel Harlow
+      - Netta Engelhardt
+      - Hong Liu
       - Maldacena
+      - Verlinde
+      - Witten
+      - Douglas Stanford
+      - Thomas E. Hartman
+      - Penington
+      - Shenker
+      - Daniel Jafferis
+      - Xi Dong
+      - Raphael Bousso
+      - Donald Marolf
+      - Gary T. Horowitz
+      - Thomas Faulkner
+      - Veronika Hubeny
+      - Mukund Rangamani
+      - Mark Van Raamsdonk
+      - Robert Myers
+      - Brian Swingle
+      - Alexander DeWitt Maloney
+      - Scott Collier
+      - Gustavo Turiaci
+      - Ahmed Almheiri
+      - Vijay Balasubramanian
+      - Per Kraus
+      - Yiming Chen
+      - Zhenbin Yang
+      - Tadashi Takayanagi
+      # string / mathematical physics
+      - Strominger
+      - Hirosi Ooguri
+      - Lorenz Eberhardt
+      - Matthias R. Gaberdiel
+      # QFT / solitons / instantons / anomalies
+      - Sidney Coleman
+      - Curtis G. Callan
+      - Roman Jackiw
+      - Gerard t Hooft
+      - Alexander M. Polyakov
+      - Stanley Mandelstam
+      - Kenneth G. Wilson
+      - Julian Schwinger
+      - Yoichiro Nambu
+      - Jeffrey Goldstone
+      - Valery Rubakov
+      - Erick Weinberg
+      - Steven Weinberg
+      # anomalies / chiral fermions / lattice
+      - Stephen Adler
+      - John Bell
+      - Julius Wess
+      - Bruno Zumino
+      - Luis Alvarez-Gaume
+      - Paul Ginsparg
+      - Martin Luscher
+      - Herbert Neuberger
+      - Holger Bech Nielsen
+      - Michael Creutz
+      # 2d CFT / boundary CFT / integrable QFT
+      - Alexander Zamolodchikov
+      - Alexei Zamolodchikov
+      - V. A. Fateev
+      - John Cardy
+      - Daniel Friedan
+      - Ian Affleck
+      - Andreas Ludwig
+      - Nobuyuki Ishibashi
+      - Philippe Di Francesco
+      - Jean-Bernard Zuber
+      - Graeme Segal
+      - Gregory Moore
+      # string theory / D-branes / matrix models
+      - Joseph Polchinski
+      - Michael Green
+      - John Schwarz
+      - Joel Scherk
+      - Pierre Ramond
+      - Lars Brink
+      - Claudio Lovelace
+      - Tom Banks
+      - Willy Fischler
+      - Leonard Susskind
+      - Michael R. Douglas
+      - Emil Martinec
+      - Jeffrey A. Harvey
+      - Lance Dixon
+      - Cumrun Vafa
+      - Petr Horava
+      # black holes / semiclassical gravity
+      - Stephen Hawking
+      - Jacob Bekenstein
+      - Gary Gibbons
+      - James Hartle
+      - Robert Wald
+      - William Unruh
+      - Brandon Carter
+      - Werner Israel
+      - Bryce DeWitt
+      - Stanley Deser
+      - Charles Misner
+      - Richard Arnowitt
+      - James W. York
+      - Ted Jacobson
+      - Malcolm Perry
     affiliations:
-      # Searched in the raw LaTeX header of each paper
-      - IAS Princeton
+      - Princeton, Inst. Advanced Study
       - Perimeter Institute
       - CERN
   llm_reranker:
     research_interest: >
-      I work on non-perturbative aspects of quantum field theory.
-      My main interests include: exact results in 2D gauge theories (Schwinger model,
-      bosonization, axial anomaly, confinement via photon mass generation), higher-form
-      symmetries and symmetry topological field theories (SymTFT), 't Hooft anomaly
-      matching, topological field theories in various dimensions, integrability in QFT,
-      and string/M-theory compactifications that produce interesting low-dimensional
-      effective field theories. I am also interested in lattice approaches to
-      non-perturbative QFT when they connect to continuum exact results.
+      I work on non-perturbative QFT with three main threads.
+
+      (1) Chiral gauge theories and lattice: bosonization/fermionization between
+      compact bosons and Dirac fermions; Villain and modified-Villain Hamiltonians
+      as exact lattice realizations of compact scalars; boundary CFT and anomaly
+      inflow. Key references: Seifnashri-Shao-Seiberg on Villain Hamiltonians;
+      Cheng-Seiberg (2023) on Lieb-Schultz-Mattis and t Hooft anomaly matching
+      on the lattice. Goal: rigorous lattice boundary formulation of the 3450
+      model reproducing the continuum IR reflection matrix; realize the
+      non-invertible Z5 symmetry on the lattice with boundary.
+
+      (2) Matrix models and holography: polarized IKKT model, matrix bootstrap,
+      Monte Carlo at finite N, massive deformations of SYM in lower dimensions.
+      Key references: Hartnoll-Liu (2406.11792, 2504.06481) on polarized IKKT
+      and its first-order phase transition; Komatsu et al. (2410.18173,
+      2411.18678) on backreacted geometries and localization; Lin-Hartnoll
+      bootstrap via Schwinger-Dyson plus SDP.
+
+      (3) Black hole information and holographic entanglement: information
+      paradox, island formula, replica wormholes; semiclassical gravitational
+      path integrals; holographic entanglement entropy in AdS/CFT and beyond;
+      connections to quantum many-body physics and quantum information.
+      Key researchers: Harlow, Penington, Maldacena, Shenker.
     batch_delay: 0.5
 
 classic_recommender:
   enabled: true
   n_picks: 3
-  pool_size: 80
-  pool_mode: both            # pull from both watchlist authors AND broad hep-th
-  min_citations: 150         # hep-th has inflation; 150+ is a reasonable bar
-  max_paper_age_years: null  # no age limit — truly classic papers can be from any era
+  pool_size: 50
+  pool_mode: both
+  min_citations: 200
+  max_paper_age_years: null
   inspire_timeout: 25
