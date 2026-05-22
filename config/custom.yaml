@@ -22,7 +22,7 @@ source:
   arxiv:
     category: ["hep-th", "hep-lat"]
     include_cross_list: false
-    days_back: 3
+    days_back: 4
 
 executor:
   debug: ${oc.env:DEBUG,null}
