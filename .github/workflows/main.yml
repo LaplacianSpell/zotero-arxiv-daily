@@ -2,8 +2,10 @@ name: Send emails (Mon + Thu)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * 1'
-    - cron: '0 22 * * 4'
+    # Tue 00:30 UTC — covers Mon batch (arxiv releases ~20:00, traffic quiets by midnight)
+    - cron: '30 0 * * 2'
+    # Fri 00:30 UTC — covers Tue+Wed+Thu submissions
+    - cron: '30 0 * * 5'
 
 jobs:
   calculate-and-send:

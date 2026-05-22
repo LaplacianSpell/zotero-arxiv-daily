@@ -213,9 +213,9 @@ class ArxivRetriever(BaseRetriever):
                         papers[result.entry_id] = result
                     break
                 except arxiv.HTTPError as exc:
-                    if exc.status == 429 and attempt < max_batch_retries - 1:
-                        wait = 30 * (attempt + 1)
-                        logger.warning(f"arXiv API 429, retry {attempt+1}/{max_batch_retries} in {wait}s")
+                    if exc.status in (429, 503) and attempt < max_batch_retries - 1:
+                        wait = 60 * (2 ** attempt)
+                        logger.warning(f"arXiv API {exc.status}, retry {attempt+1}/{max_batch_retries} in {wait}s")
                         sleep(wait)
                     else:
                         raise
@@ -238,8 +238,7 @@ class ArxivRetriever(BaseRetriever):
     def _fetch_by_ids(self, client, all_paper_ids: list[str]) -> list[ArxivResult]:
         raw_papers = []
         bar = tqdm(total=len(all_paper_ids))
-        max_batch_retries = 5
-        batch_retry_delay = 30
+        max_batch_retries = 8
         for i in range(0, len(all_paper_ids), 20):
             search = arxiv.Search(id_list=all_paper_ids[i:i + 20])
             for attempt in range(max_batch_retries):
@@ -249,14 +248,16 @@ class ArxivRetriever(BaseRetriever):
                     raw_papers.extend(batch)
                     break
                 except arxiv.HTTPError as exc:
-                    if exc.status == 429 and attempt < max_batch_retries - 1:
-                        wait = batch_retry_delay * (attempt + 1)
-                        logger.warning(f"arXiv API 429 on batch {i//20}, retry {attempt+1}/{max_batch_retries} in {wait}s")
+                    if exc.status in (429, 503) and attempt < max_batch_retries - 1:
+                        # Exponential backoff: 60, 120, 240, 480... seconds
+                        wait = 60 * (2 ** attempt)
+                        logger.warning(f"arXiv API {exc.status} on batch {i//20}, "
+                                       f"retry {attempt+1}/{max_batch_retries} in {wait}s")
                         sleep(wait)
                     else:
                         raise
             if i + 20 < len(all_paper_ids):
-                sleep(3)
+                sleep(5)
         bar.close()
         return raw_papers
 
