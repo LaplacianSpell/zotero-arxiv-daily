@@ -155,24 +155,22 @@ class ArxivRetriever(BaseRetriever):
         logger.info(f"arXiv categories (cleaned): {categories}")
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
 
-        # Debug mode: always use fast RSS (no multi-day search)
-        if self.config.executor.debug:
+        # Debug mode or single-day: always use fast RSS (no multi-day search)
+        if self.config.executor.debug or self.days_back <= 1:
             return self._retrieve_via_rss(categories, include_cross_list)
 
-        # Check last run time — if recent enough, use that as start boundary
+        # Multi-day mode: check last run time to avoid duplicates
         last_run = self._load_last_run()
         now = datetime.now(timezone.utc)
         if last_run:
             days_since = (now - last_run).total_seconds() / 86400
             # If last run was within 1.5x days_back window, use it as start
             if days_since <= self.days_back * 1.5:
-                logger.info(f"Last run was {days_since:.1f} days ago, using that as start boundary")
+                logger.info(f"Last run was {days_since:.1f} days ago, using as start boundary")
                 return self._retrieve_via_search(categories, include_cross_list,
                                                  since=last_run)
 
-        # First run or long gap: fall back to days_back window
-        if self.days_back <= 1:
-            return self._retrieve_via_rss(categories, include_cross_list)
+        # First run or long gap: use full days_back window
         return self._retrieve_via_search(categories, include_cross_list)
 
     # ── RSS path (single day, original behaviour) ─────────────────────────
