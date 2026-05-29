@@ -11,6 +11,7 @@ from .construct_email import render_email
 from .utils import send_email
 from concurrent.futures import ThreadPoolExecutor
 from .classic_recommender import ClassicRecommender, save_sent_ids
+from .retriever.arxiv_retriever import ArxivRetriever
 from .reranker.llm import WATCHLIST_SCORE, LlmReranker
 from openai import OpenAI
 from tqdm import tqdm
@@ -171,3 +172,9 @@ class Executor:
         # Persist the updated sent-classics state only after successful send
         if new_sent_ids and self.classic_recommender.enabled:
             save_sent_ids(self.classic_recommender.state_path, new_sent_ids)
+
+        # Save last run timestamp to avoid duplicate papers on next run
+        if not self.config.executor.debug:
+            from datetime import timezone as _tz
+            ArxivRetriever.save_last_run(datetime.now(_tz.utc))
+            logger.info("Saved last run timestamp")

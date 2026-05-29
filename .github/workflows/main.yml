@@ -44,7 +44,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/sent_classics.json
+          git add state/sent_classics.json state/last_run.json
           if git diff --staged --quiet; then
             echo "No classic state changes to commit"
           else

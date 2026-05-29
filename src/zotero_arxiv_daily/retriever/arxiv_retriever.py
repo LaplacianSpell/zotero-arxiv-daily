@@ -10,7 +10,7 @@ import multiprocessing
 import os
 from queue import Empty
 from time import sleep
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 from loguru import logger
 import requests
 from datetime import datetime, timedelta, timezone
@@ -131,19 +131,49 @@ class ArxivRetriever(BaseRetriever):
         result = [_JUNK.sub("", str(c)) for c in items]
         return [c for c in result if c]
 
+    @staticmethod
+    def _load_last_run() -> Optional[datetime]:
+        try:
+            import json as _json
+            data = _json.load(open("state/last_run.json"))
+            ts = data.get("last_run_utc", "")
+            if ts:
+                return datetime.fromisoformat(ts)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def save_last_run(dt: datetime) -> None:
+        import json as _json, os as _os
+        _os.makedirs("state", exist_ok=True)
+        _json.dump({"last_run_utc": dt.isoformat()}, open("state/last_run.json", "w"))
+
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
         raw_cats = self.config.source.arxiv.category
         categories = self._clean_categories(raw_cats)
         logger.info(f"arXiv categories (cleaned): {categories}")
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
 
-        # In debug mode always use RSS — Search API date-range queries are very
-        # slow regardless of result count; there's no point waiting for them
-        # during a test run.
-        if self.config.executor.debug or self.days_back <= 1:
+        # Debug mode: always use fast RSS (no multi-day search)
+        if self.config.executor.debug:
             return self._retrieve_via_rss(categories, include_cross_list)
-        else:
-            return self._retrieve_via_search(categories, include_cross_list)
+
+        # Check last run time — if recent enough, use that as start boundary
+        last_run = self._load_last_run()
+        now = datetime.now(timezone.utc)
+        if last_run:
+            days_since = (now - last_run).total_seconds() / 86400
+            # If last run was within 1.5x days_back window, use it as start
+            if days_since <= self.days_back * 1.5:
+                logger.info(f"Last run was {days_since:.1f} days ago, using that as start boundary")
+                return self._retrieve_via_search(categories, include_cross_list,
+                                                 since=last_run)
+
+        # First run or long gap: fall back to days_back window
+        if self.days_back <= 1:
+            return self._retrieve_via_rss(categories, include_cross_list)
+        return self._retrieve_via_search(categories, include_cross_list)
 
     # ── RSS path (single day, original behaviour) ─────────────────────────
     def _retrieve_via_rss(self, categories: list[str], include_cross_list: bool) -> list[ArxivResult]:
@@ -167,20 +197,20 @@ class ArxivRetriever(BaseRetriever):
         return self._fetch_by_ids(client, all_paper_ids)
 
     # ── Search API path (multi-day batching) ──────────────────────────────
-    def _retrieve_via_search(self, categories, include_cross_list: bool) -> list[ArxivResult]:
+    def _retrieve_via_search(self, categories, include_cross_list: bool,
+                             since: Optional[datetime] = None) -> list[ArxivResult]:
         """
-        Fetch papers submitted in the last self.days_back arxiv working days.
+        Fetch papers submitted since `since` (or last days_back working days).
         Uses the arxiv Search API with submittedDate range filter.
-        Cross-list: when True, includes papers cross-listed TO these categories
-        that were originally submitted to other categories.
         """
         client = arxiv.Client(num_retries=10, delay_seconds=10)
 
-        # Build date range: go back days_back+1 working days to be safe with
-        # arxiv's ~midnight UTC cutoff; deduplicate by entry ID.
-        working_days = _arxiv_weekdays_back(self.days_back + 1)
-        oldest = min(working_days, key=lambda d: d)
         newest = datetime.now(timezone.utc)
+        if since is not None:
+            oldest = since
+        else:
+            working_days = _arxiv_weekdays_back(self.days_back + 1)
+            oldest = min(working_days, key=lambda d: d)
 
         start_str = oldest.strftime("%Y%m%d%H%M")
         end_str   = newest.strftime("%Y%m%d%H%M")
