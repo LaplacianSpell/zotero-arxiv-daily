@@ -68,7 +68,7 @@ def _format_tldr(tldr: str) -> str:
     result = tldr
     for label in labels:
         result = result.replace(label, f"<br><strong>{label}</strong> ")
-    return result.lstrip("<br>")
+    return result.removeprefix("<br>")
 
 
 def get_block_html(title, authors, rate, tldr, pdf_url, affiliations=None,

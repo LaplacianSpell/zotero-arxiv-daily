@@ -200,6 +200,11 @@ def test_run_end_to_end(config, monkeypatch):
     monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
 
     # 6. Run
+    # Prevent tests from writing real state files (state/last_run.json etc.)
+    monkeypatch.setattr("zotero_arxiv_daily.executor.save_sent_ids", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "zotero_arxiv_daily.executor.ArxivRetriever.save_last_run", staticmethod(lambda dt: None)
+    )
     executor = Executor(config)
     executor.run()
 
@@ -239,6 +244,11 @@ def test_run_no_papers_send_empty_false(config, monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
     monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
 
+    # Prevent tests from writing real state files (state/last_run.json etc.)
+    monkeypatch.setattr("zotero_arxiv_daily.executor.save_sent_ids", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "zotero_arxiv_daily.executor.ArxivRetriever.save_last_run", staticmethod(lambda dt: None)
+    )
     executor = Executor(config)
     executor.run()
 
@@ -275,6 +285,11 @@ def test_run_no_papers_send_empty_true(config, monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
     monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
 
+    # Prevent tests from writing real state files (state/last_run.json etc.)
+    monkeypatch.setattr("zotero_arxiv_daily.executor.save_sent_ids", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "zotero_arxiv_daily.executor.ArxivRetriever.save_last_run", staticmethod(lambda dt: None)
+    )
     executor = Executor(config)
     executor.run()
 

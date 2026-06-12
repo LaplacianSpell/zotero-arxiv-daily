@@ -46,8 +46,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state/sent_classics.json state/last_run.json
           if git diff --staged --quiet; then
-            echo "No classic state changes to commit"
+            echo "No state changes to commit"
           else
-            git pull --rebase --autostash origin main
+            git commit -m "chore: update run state [skip ci]"
+            git pull --rebase origin main
             git push
           fi
